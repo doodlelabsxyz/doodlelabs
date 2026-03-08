@@ -145,7 +145,7 @@ export default function ClientCalendarPage() {
     if (!mounted || !bodyRef.current) return
     gsap.fromTo('.c-cell',
       { opacity: 0, y: 6 },
-      { opacity: 1, y: 0, duration: 0.25, stagger: 0.006, ease: 'power2.out', clearProps: 'all' }
+      { opacity: 1, y: 0, duration: 0.25, stagger: 0.006, ease: 'power2.out', clearProps: 'opacity,transform' }
     )
   }, { dependencies: [mounted, view, viewMonth, viewYear, clientId], scope: bodyRef })
 

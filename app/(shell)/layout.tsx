@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { DesktopSidebar, MobilePillNav } from '@/components/shell/PillNav'
 import { NAV_BY_ROLE, type Role } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { getInitials, getAvatarColor } from '@/lib/utils'
+
+const SIDEBAR_KEY = 'sidebar-collapsed'
 
 export default function ShellLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -16,6 +17,21 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   const [userColor, setUserColor] = useState('hsl(200,82%,58%)')
   const [notifCount, setNotifCount] = useState(0)
   const [mounted, setMounted] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
+
+  // Restore persisted sidebar state
+  useEffect(() => {
+    const saved = localStorage.getItem(SIDEBAR_KEY)
+    if (saved === 'true') setCollapsed(true)
+  }, [])
+
+  function handleToggle() {
+    setCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem(SIDEBAR_KEY, String(next))
+      return next
+    })
+  }
 
   useEffect(() => {
     const supabase = createClient()
@@ -99,6 +115,8 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         userColor={userColor}
         notifCount={notifCount}
         onLogout={handleLogout}
+        collapsed={collapsed}
+        onToggle={handleToggle}
       />
       {children}
 

@@ -106,7 +106,7 @@ export default function CalendarPage() {
     if (loading || !bodyRef.current) return
     gsap.fromTo('.c-item',
       { opacity: 0, y: 8 },
-      { opacity: 1, y: 0, duration: 0.28, stagger: { amount: 0.18 }, ease: 'power2.out', clearProps: 'all' }
+      { opacity: 1, y: 0, duration: 0.28, stagger: { amount: 0.18 }, ease: 'power2.out', clearProps: 'opacity,transform' }
     )
   }, { dependencies: [loading, view], scope: bodyRef })
 
@@ -352,24 +352,27 @@ function WeekView({ weekStart, today, cmap, clients, router, onDayClick }: {
   const todayStr = toStr(today)
 
   return (
-    <div className="no-scroll" style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(148px, 1fr))', gap: '6px', padding: '12px 12px 0', minWidth: '700px', flexShrink: 0 }}>
+    <div className="no-scroll" style={{ flex: 1, overflowX: 'auto', overflowY: 'auto', padding: '12px 12px 100px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(148px, 1fr))', gap: '6px', minWidth: '700px', flex: 1 }}>
         {days.map((day, di) => {
           const key     = toStr(day)
           const isToday = key === todayStr
           const isWknd  = di >= 5
+          const pieces  = cmap.get(key) || []
 
           return (
             <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
               {/* Day header */}
-              <button
-                onClick={() => onDayClick(day)}
-                style={{
-                  padding: '10px 8px', borderRadius: '12px 12px 0 0',
-                  background: isToday ? 'hsl(25,82%,60%)' : isWknd ? 'hsl(42,14%,90%)' : '#fff',
-                  border: isToday ? 'none' : `1.5px solid hsl(38,14%,${isWknd ? '84' : '90'}%)`,
-                  borderBottom: 'none', cursor: 'pointer', textAlign: 'center', width: '100%',
-                }}>
+              <div style={{ position: 'sticky', top: '-12px', zIndex: 10, background: 'hsl(42,30%,97%)', paddingBottom: '0' }}>
+                <button
+                  onClick={() => onDayClick(day)}
+                  style={{
+                    padding: '10px 8px', borderRadius: '12px 12px 0 0',
+                    background: isToday ? 'hsl(25,82%,60%)' : isWknd ? 'hsl(42,14%,90%)' : '#fff',
+                    border: isToday ? 'none' : `1.5px solid hsl(38,14%,${isWknd ? '84' : '90'}%)`,
+                    borderBottom: 'none', cursor: 'pointer', textAlign: 'center', width: '100%',
+                    display: 'block'
+                  }}>
                 <p style={{ fontSize: '0.58rem', fontWeight: 700, color: isToday ? 'rgba(255,255,255,0.75)' : 'hsl(24,10%,52%)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '3px' }}>
                   {DAYS_SHORT[di]}
                 </p>
@@ -377,22 +380,10 @@ function WeekView({ weekStart, today, cmap, clients, router, onDayClick }: {
                   {day.getDate()}
                 </p>
               </button>
-            </div>
-          )
-        })}
-      </div>
+              </div>
 
-      {/* Content columns */}
-      <div className="no-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0 12px 100px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(148px, 1fr))', gap: '6px', minWidth: '700px' }}>
-          {days.map((day, di) => {
-            const key     = toStr(day)
-            const pieces  = cmap.get(key) || []
-            const isToday = key === todayStr
-            const isWknd  = di >= 5
-
-            return (
-              <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '5px', padding: '6px', background: isToday ? 'hsl(25,82%,98%)' : isWknd ? 'hsl(42,14%,95%)' : 'hsl(42,22%,97%)', borderRadius: '0 0 12px 12px', border: isToday ? '1.5px solid hsl(25,82%,78%)' : `1.5px solid hsl(38,14%,${isWknd ? '84' : '90'}%)`, borderTop: 'none', minHeight: '80px' }}>
+              {/* Day Content */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', padding: '6px', background: isToday ? 'hsl(25,82%,98%)' : isWknd ? 'hsl(42,14%,95%)' : 'hsl(42,22%,97%)', borderRadius: '0 0 12px 12px', border: isToday ? '1.5px solid hsl(25,82%,78%)' : `1.5px solid hsl(38,14%,${isWknd ? '84' : '90'}%)`, borderTop: 'none', flex: 1, minHeight: '80px' }}>
                 {pieces.length === 0 ? (
                   <button
                     onClick={() => router.push(`/brief/new?date=${key}`)}
@@ -442,9 +433,9 @@ function WeekView({ weekStart, today, cmap, clients, router, onDayClick }: {
                   })
                 )}
               </div>
-            )
-          })}
-        </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

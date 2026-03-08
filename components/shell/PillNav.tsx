@@ -3,11 +3,10 @@
 import React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import type { NavItem } from '@/lib/types'
-import Image from 'next/image'
 
 gsap.registerPlugin(useGSAP)
 
@@ -15,7 +14,7 @@ gsap.registerPlugin(useGSAP)
 
 function LogoMark() {
   return (
-    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true" className="shrink-0">
       <rect width="30" height="30" rx="9" fill="var(--color-brand)" />
       <path
         d="M9 22 L15 8 L21 22 M11.5 17.5 H18.5"
@@ -31,7 +30,7 @@ function LogoMark() {
 // ─── Nav icons ────────────────────────────────────────────────────────────────
 
 function NavIcon({ name, active }: { name: NavItem['icon']; active: boolean }) {
-  const col = active ? 'var(--color-cream)' : 'hsl(140,7%,48%)'
+  const col = active ? 'var(--color-cream)' : 'var(--color-dark-muted)'
 
   const map: Record<NavItem['icon'], React.ReactElement> = {
     home: (
@@ -132,84 +131,161 @@ function NavIcon({ name, active }: { name: NavItem['icon']; active: boolean }) {
   return map[name] ?? null
 }
 
+// ─── Mobile More Drawer ───────────────────────────────────────────────────────
+
+function MoreDrawer({ items, onClose }: { items: NavItem[]; onClose: () => void }) {
+  const pathname = usePathname()
+  const sheetRef = useRef<HTMLDivElement>(null)
+  const backdropRef = useRef<HTMLDivElement>(null)
+
+  useGSAP(() => {
+    gsap.fromTo(backdropRef.current, { opacity: 0 }, { opacity: 1, duration: 0.22, ease: 'power2.out' })
+    gsap.fromTo(sheetRef.current, { y: '100%', opacity: 0 }, { y: '0%', opacity: 1, duration: 0.38, ease: 'expo.out' })
+  }, [])
+
+  const close = useCallback(() => {
+    gsap.to(sheetRef.current, { y: '100%', opacity: 0, duration: 0.28, ease: 'expo.in' })
+    gsap.to(backdropRef.current, { opacity: 0, duration: 0.25, ease: 'power2.in', onComplete: onClose })
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-[100]">
+      <div ref={backdropRef} onClick={close} className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
+      <div
+        ref={sheetRef}
+        className="absolute bottom-0 left-0 right-0 bg-dark border border-white/[0.07] border-b-0 rounded-t-[20px] px-3 pb-8 pt-2 shadow-2xl"
+      >
+        {/* Handle */}
+        <div className="flex justify-center py-3">
+          <div className="w-9 h-1 rounded-full bg-white/15" />
+        </div>
+        <p className="text-[0.6rem] font-bold tracking-widest text-dark-ghost uppercase px-1 mb-2.5">More</p>
+        <div className="grid grid-cols-4 gap-1.5">
+          {items.map(item => {
+            const isActive = item.href === pathname
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={close}
+                className={`flex flex-col items-center gap-1.5 py-3.5 px-2 rounded-2xl no-underline transition-colors ${
+                  isActive ? 'bg-brand' : 'bg-white/[0.04] active:bg-white/[0.08]'
+                }`}
+              >
+                <NavIcon name={item.icon} active={isActive} />
+                <span className={`text-[0.6rem] font-${isActive ? '700' : '500'} leading-none text-center ${
+                  isActive ? 'text-cream' : 'text-dark-muted'
+                }`}>
+                  {item.label}
+                </span>
+              </Link>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Mobile Pill Nav ──────────────────────────────────────────────────────────
+
+const PRIMARY_COUNT = 4
 
 export function MobilePillNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname()
-  const activeIndex = items.findIndex(i => i.href === pathname) ?? 0
+  const [showMore, setShowMore] = useState(false)
+
+  const needsMore = items.length > PRIMARY_COUNT
+
+  let primaryItems: NavItem[]
+  let overflowItems: NavItem[]
+
+  if (!needsMore) {
+    primaryItems = items
+    overflowItems = []
+  } else {
+    const base = items.slice(0, PRIMARY_COUNT - 1)
+    const rest = items.slice(PRIMARY_COUNT - 1)
+    const activeOverflow = rest.find(i => i.href === pathname)
+    if (activeOverflow && !base.find(i => i.href === activeOverflow.href)) {
+      primaryItems = [...base, activeOverflow]
+      overflowItems = rest.filter(i => i.href !== activeOverflow.href)
+    } else {
+      primaryItems = [...base, items[PRIMARY_COUNT - 1]]
+      overflowItems = items.slice(PRIMARY_COUNT)
+    }
+  }
+
+  const activeIndex = primaryItems.findIndex(i => i.href === pathname)
+  const isMoreActive = needsMore && activeIndex < 0
   const blobRef = useRef<HTMLDivElement>(null)
   const prevIndex = useRef(activeIndex)
-  const itemRefs = useRef<(HTMLAnchorElement | null)[]>([])
+  const itemRefs = useRef<(HTMLAnchorElement | HTMLButtonElement | null)[]>([])
 
   useEffect(() => {
-    const activeEl = itemRefs.current[activeIndex]
+    const activeEl = itemRefs.current[activeIndex] as HTMLElement | null
     const blob = blobRef.current
-    if (!activeEl || !blob) return
-    const dir = activeIndex > prevIndex.current ? 1 : -1
+    if (!activeEl || !blob || activeIndex < 0) return
     prevIndex.current = activeIndex
     gsap.to(blob, {
       x: activeEl.offsetLeft,
       width: activeEl.offsetWidth * 1.3,
       duration: 0.16,
       ease: 'power3.in',
-      onComplete: () => {
-        gsap.to(blob, { width: activeEl.offsetWidth, duration: 0.3, ease: 'back.out(1.8)' })
-      },
+      onComplete: () => { gsap.to(blob, { width: activeEl.offsetWidth, duration: 0.3, ease: 'back.out(1.8)' }) },
     })
   }, [activeIndex])
 
   useGSAP(() => {
-    const el = itemRefs.current[activeIndex]
+    const el = itemRefs.current[activeIndex] as HTMLElement | null
     const blob = blobRef.current
-    if (el && blob) gsap.set(blob, { x: el.offsetLeft, width: el.offsetWidth })
+    if (el && blob && activeIndex >= 0) gsap.set(blob, { x: el.offsetLeft, width: el.offsetWidth })
   }, [])
 
   return (
-    <nav
-      className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50"
-      style={{
-        background: '#0F1A14',
-        borderRadius: '9999px',
-        padding: '6px',
-        boxShadow: '0 8px 32px rgba(15,26,20,0.35), 0 2px 8px rgba(15,26,20,0.2)',
-        border: '1px solid rgba(255,255,255,0.07)',
-      }}
-    >
-      <div className="relative flex items-center">
-        <div
-          ref={blobRef}
-          className="absolute top-0 h-full"
-          style={{
-            background: 'var(--color-brand)',
-            borderRadius: 'var(--radius-full)',
-            pointerEvents: 'none',
-          }}
-        />
-        {items.map((item, i) => {
-          const isActive = item.href === pathname
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              ref={el => { itemRefs.current[i] = el }}
-              className="relative z-10 flex flex-col items-center justify-center"
-              style={{ padding: '10px 20px', gap: '4px', minWidth: '68px' }}
+    <>
+      <nav className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-dark rounded-full p-[6px] border border-white/[0.07] shadow-[0_8px_32px_rgba(15,26,20,0.35),0_2px_8px_rgba(15,26,20,0.2)]">
+        <div className="relative flex items-center">
+          <div
+            ref={blobRef}
+            className={`absolute top-0 h-full rounded-full pointer-events-none ${isMoreActive ? '' : 'bg-brand'}`}
+          />
+          {primaryItems.map((item, i) => {
+            const isActive = item.href === pathname
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                ref={el => { itemRefs.current[i] = el }}
+                className="relative z-10 flex flex-col items-center justify-center gap-1 px-5 py-[10px] min-w-[68px]"
+              >
+                <NavIcon name={item.icon} active={isActive} />
+                <span className={`text-[0.6rem] leading-none ${isActive ? 'font-bold text-cream' : 'font-medium text-dark-muted'}`}>
+                  {item.label}
+                </span>
+              </Link>
+            )
+          })}
+          {needsMore && (
+            <button
+              ref={el => { itemRefs.current[primaryItems.length] = el }}
+              onClick={() => setShowMore(true)}
+              className="relative z-10 flex flex-col items-center justify-center gap-1 bg-transparent border-none cursor-pointer px-5 py-[10px] min-w-[68px]"
             >
-              <NavIcon name={item.icon} active={isActive} />
-              <span style={{
-                fontSize: 'var(--text-2xs)',
-                fontWeight: isActive ? 700 : 500,
-                color: isActive ? 'var(--color-cream)' : 'hsl(140,7%,48%)',
-                lineHeight: 1,
-                transition: 'color var(--dur-base) var(--spring-gentle)',
-              }}>
-                {item.label}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <circle cx="5" cy="12" r="1.8" fill={isMoreActive ? 'var(--color-cream)' : 'var(--color-dark-muted)'}/>
+                <circle cx="12" cy="12" r="1.8" fill={isMoreActive ? 'var(--color-cream)' : 'var(--color-dark-muted)'}/>
+                <circle cx="19" cy="12" r="1.8" fill={isMoreActive ? 'var(--color-cream)' : 'var(--color-dark-muted)'}/>
+              </svg>
+              <span className={`text-[0.6rem] leading-none ${isMoreActive ? 'font-bold text-cream' : 'font-medium text-dark-muted'}`}>
+                More
               </span>
-            </Link>
-          )
-        })}
-      </div>
-    </nav>
+            </button>
+          )}
+        </div>
+      </nav>
+      {showMore && <MoreDrawer items={overflowItems} onClose={() => setShowMore(false)} />}
+    </>
   )
 }
 
@@ -223,6 +299,8 @@ export function DesktopSidebar({
   userColor,
   notifCount,
   onLogout,
+  collapsed,
+  onToggle,
 }: {
   items: NavItem[]
   userName: string
@@ -231,164 +309,157 @@ export function DesktopSidebar({
   userColor: string
   notifCount: number
   onLogout: () => void
+  collapsed: boolean
+  onToggle: () => void
 }) {
   const pathname = usePathname()
-  const [showMenu, setShowMenu] = React.useState(false)
+  const [showMenu, setShowMenu] = useState(false)
+
+  const sidebarRef = useRef<HTMLElement>(null)
+  const toggleIconRef = useRef<SVGSVGElement>(null)
+
+  // ── Animation ────────────────────────────────────────────────────────────────
+  // GSAP ONLY animates the sidebar width and toggle arrow rotation. Let flexbox do the rest.
+  useGSAP(() => {
+    if (!sidebarRef.current) return
+    gsap.set(sidebarRef.current, { width: collapsed ? 64 : 260 })
+    if (collapsed) gsap.set(toggleIconRef.current, { rotation: 180 })
+  }, [])
+
+  useEffect(() => {
+    const sidebar = sidebarRef.current
+    if (!sidebar) return
+
+    if (collapsed) {
+      gsap.to(sidebar, { width: 64, duration: 0.45, ease: 'power3.inOut' })
+      gsap.to(toggleIconRef.current, { rotation: 180, duration: 0.45, ease: 'power3.inOut' })
+    } else {
+      gsap.to(sidebar, { width: 260, duration: 0.45, ease: 'power3.inOut' })
+      gsap.to(toggleIconRef.current, { rotation: 0, duration: 0.45, ease: 'power3.inOut' })
+    }
+  }, [collapsed])
+
+  // Tailwind handles the opacity fade seamlessly
+  const textOpacity = collapsed ? 'opacity-0 delay-0' : 'opacity-100 delay-150'
 
   return (
     <aside
-      className="hidden md:flex flex-col shrink-0"
-      style={{
-        width: '260px',
-        height: '100dvh',
-        background: 'var(--color-dark)',
-        borderRight: '1px solid var(--color-dark-hover)',
-        position: 'sticky',
-        top: 0,
-        overflowY: 'auto',
-        flexShrink: 0,
-      }}
+      ref={sidebarRef}
+      className="hidden md:flex flex-col shrink-0 bg-dark border-r border-dark-hover sticky top-0 h-dvh overflow-x-hidden"
     >
-      {/* Logo */}
-      <div
-        className="flex items-center"
-        style={{ gap: 'var(--s2)', padding: 'var(--s4) var(--s3) var(--s3)' }}
-      >
-        <LogoMark />
-        <span
-          className="font-bold"
-          style={{ fontSize: 'var(--text-base)', color: 'var(--color-dark-text)', letterSpacing: '-0.01em' }}
-        >
-          Agency<span style={{ color: 'var(--color-brand)' }}>OS</span>
-        </span>
+      {/* ── Logo ─────────────────────────────────────────────────────────── */}
+      <div className="flex items-center h-[60px] px-2 shrink-0">
+        <div className="w-[48px] h-full flex items-center justify-center shrink-0">
+          <LogoMark />
+        </div>
+        <div className={`overflow-hidden transition-opacity duration-200 whitespace-nowrap ${textOpacity}`}>
+          <span className="font-bold text-base text-dark-text tracking-tight ml-1">
+            Agency<span className="text-brand">OS</span>
+          </span>
+        </div>
       </div>
 
-      {/* Nav */}
-      <nav className="flex flex-col px-3" style={{ gap: '2px', marginTop: 'var(--s1)' }}>
-        {items.map(item => {
+      {/* ── Nav ──────────────────────────────────────────────────────────── */}
+      <nav className="flex flex-col px-2 gap-0.5 relative">
+        {items.map((item) => {
           const isActive = pathname === item.href
           return (
             <React.Fragment key={item.href}>
-            {item.dividerBefore && (
-              <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '8px 4px 6px' }} />
-            )}
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center group"
-              style={{
-                gap: '12px',
-                padding: '11px 14px',
-                borderRadius: 'var(--radius-md)',
-                background: isActive ? 'var(--color-brand)' : 'transparent',
-                transition: 'background var(--dur-fast) var(--spring-snap)',
-                position: 'relative',
-              }}
-              onMouseEnter={e => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLAnchorElement).style.background = 'var(--color-dark-hover)'
-                }
-              }}
-              onMouseLeave={e => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLAnchorElement).style.background = 'transparent'
-                }
-              }}
-            >
-              {/* Active left bar */}
-              {isActive && (
-                <div style={{
-                  position: 'absolute', left: 4, top: '20%', height: '60%',
-                  width: '3px', borderRadius: '0 3px 3px 0',
-                  background: 'var(--color-cream)',
-                }} />
+              {/* Divider */}
+              {item.dividerBefore && (
+                <div
+                  className={`h-px mx-1 my-2 transition-opacity duration-200 ${collapsed ? 'opacity-0' : 'opacity-100'}`}
+                  style={{ background: 'rgba(255,255,255,0.06)' }}
+                />
               )}
-              <NavIcon name={item.icon} active={isActive} />
-              <span style={{
-                fontSize: 'var(--text-sm)',
-                fontWeight: isActive ? 700 : 500,
-                color: isActive ? 'var(--color-cream)' : 'var(--color-dark-muted)',
-                transition: 'color var(--dur-fast) ease',
-                flex: 1,
-              }}>
-                {item.label}
-              </span>
-              {/* Notif badge on Alerts */}
-              {item.icon === 'notifications' && notifCount > 0 && (
-                <span style={{
-                  minWidth: '20px', height: '20px',
-                  borderRadius: 'var(--radius-full)',
-                  background: 'var(--color-cream)',
-                  color: 'var(--color-brand)',
-                  fontSize: 'var(--text-2xs)',
-                  fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: '0 5px',
-                }}>
-                  {notifCount}
+              {/* FIXED HEIGHT h-[38px] guarantees 0px vertical layout shift during collapse */}
+              <Link
+                href={item.href}
+                title={collapsed ? item.label : undefined}
+                className={`group flex items-center h-[38px] rounded-[10px] overflow-hidden transition-colors relative shrink-0
+                  ${isActive ? 'bg-brand' : 'hover:bg-dark-hover'}`}
+              >
+                {/* Active left bar */}
+                {isActive && (
+                  <div className="absolute left-1 top-[20%] h-[60%] w-[3px] rounded-r-[3px] bg-cream" />
+                )}
+
+                {/* EXACTLY 48px wide to lock the icon dead center in a 64px sidebar */}
+                <div className="w-[48px] h-full flex items-center justify-center shrink-0">
+                  <NavIcon name={item.icon} active={isActive} />
+                </div>
+
+                <span
+                  className={`text-sm whitespace-nowrap transition-opacity duration-200 ${textOpacity} ${isActive ? 'font-bold text-cream' : 'font-medium text-dark-muted'}`}
+                >
+                  {item.label}
                 </span>
-              )}
-            </Link>
+
+                {item.icon === 'notifications' && notifCount > 0 && (
+                  <div className={`ml-auto pr-3 shrink-0 flex items-center transition-opacity duration-200 ${textOpacity}`}>
+                    <span className="min-w-5 h-5 rounded-full bg-cream text-brand text-[0.6rem] font-bold flex items-center justify-center px-1.5">
+                      {notifCount}
+                    </span>
+                  </div>
+                )}
+              </Link>
             </React.Fragment>
           )
         })}
       </nav>
 
-      <div className="flex-1" />
+      <div className="flex-1 min-h-[25px]" />
 
-      {/* ── Illustration placeholder ─────────────────────────────────────── */}   
-          {/* Person silhouette */}
-          
+      {/* ── Collapse toggle ───────────────────────────────────────────────── */}
+      <div className="px-2 pb-2 shrink-0">
+        <button
+          onClick={onToggle}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="w-full flex items-center h-[38px] rounded-[10px] bg-transparent border-none cursor-pointer hover:bg-dark-hover transition-colors overflow-hidden shrink-0 relative"
+        >
+          <div className="w-[48px] h-full flex items-center justify-center shrink-0">
+            <svg ref={toggleIconRef} width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <rect x="3" y="3" width="4" height="18" rx="1.5" fill="var(--color-dark-ghost)"/>
+              <path d="M14 8l-4 4 4 4" stroke="var(--color-dark-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <span className={`text-[0.7rem] font-semibold text-dark-ghost whitespace-nowrap transition-opacity duration-200 ${textOpacity}`}>
+            Collapse
+          </span>
+        </button>
+      </div>
 
-      {/* User profile + menu */}
-      <div style={{ position: 'relative' }}>
-        {/* Dropdown menu */}
+      {/* ── User profile + menu ───────────────────────────────────────────── */}
+      <div className="relative shrink-0">
         {showMenu && (
           <>
-            {/* Backdrop */}
+            <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
             <div
-              style={{ position: 'fixed', inset: 0, zIndex: 10 }}
-              onClick={() => setShowMenu(false)}
-            />
-            <div style={{
-              position: 'absolute', bottom: '100%', left: '12px', right: '12px',
-              background: '#1a2e22', borderRadius: '14px', overflow: 'hidden',
-              border: '1px solid rgba(255,255,255,0.08)',
-              boxShadow: '0 -8px 24px rgba(0,0,0,0.3)',
-              zIndex: 20, marginBottom: '6px',
-            }}>
+              className="absolute bottom-full bg-[#1a2e22] rounded-2xl overflow-hidden border border-white/[0.08] z-20 mb-1.5 shadow-[0_-8px_24px_rgba(0,0,0,0.3)]"
+              style={{
+                left: collapsed ? '68px' : '12px',
+                right: collapsed ? 'auto' : '12px',
+                minWidth: collapsed ? '160px' : 'auto',
+              }}
+            >
               <Link
                 href="/settings"
                 onClick={() => setShowMenu(false)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: '12px 14px', textDecoration: 'none',
-                  color: 'hsl(42,22%,80%)', fontSize: '0.82rem', fontWeight: 600,
-                  transition: 'background 0.12s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                className="flex items-center gap-2.5 px-3.5 py-3 no-underline text-dark-text text-[0.82rem] font-semibold hover:bg-white/[0.06] transition-colors"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="3" stroke="hsl(140,7%,52%)" strokeWidth="1.8"/>
-                  <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="hsl(140,7%,52%)" strokeWidth="1.8" strokeLinecap="round"/>
+                  <circle cx="12" cy="12" r="3" stroke="var(--color-dark-muted)" strokeWidth="1.8"/>
+                  <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="var(--color-dark-muted)" strokeWidth="1.8" strokeLinecap="round"/>
                 </svg>
                 Settings
               </Link>
-              <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '0 12px' }} />
+              <div className="h-px bg-white/[0.06] mx-3" />
               <button
                 onClick={() => { setShowMenu(false); onLogout() }}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: '12px 14px', background: 'transparent', border: 'none', cursor: 'pointer',
-                  color: 'hsl(4,72%,62%)', fontSize: '0.82rem', fontWeight: 600, textAlign: 'left',
-                  transition: 'background 0.12s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                className="w-full flex items-center gap-2.5 px-3.5 py-3 bg-transparent border-none cursor-pointer text-coral text-[0.82rem] font-semibold text-left hover:bg-white/[0.06] transition-colors"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="hsl(4,72%,62%)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="var(--color-coral)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
                 Log Out
               </button>
@@ -396,39 +467,39 @@ export function DesktopSidebar({
           </>
         )}
 
-        {/* Profile row */}
         <button
           onClick={() => setShowMenu(v => !v)}
-          style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
-            padding: '14px 16px', background: showMenu ? 'rgba(255,255,255,0.05)' : 'transparent',
-            border: 'none', cursor: 'pointer', textAlign: 'left',
-            borderTop: '1px solid rgba(255,255,255,0.06)',
-            transition: 'background 0.12s',
-          }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-          onMouseLeave={e => { if (!showMenu) e.currentTarget.style.background = 'transparent' }}
+          title={collapsed ? `${userName} (${userRole})` : undefined}
+          className={`w-full flex items-center h-[56px] bg-transparent border-none cursor-pointer border-t border-white/[0.06] hover:bg-white/[0.05] transition-colors relative overflow-hidden px-2 shrink-0
+            ${showMenu ? 'bg-white/[0.05]' : ''}`}
         >
-          <div style={{
-            width: 36, height: 36, borderRadius: '50%', background: userColor, flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '0.65rem', fontWeight: 800, color: '#fff',
-          }}>
-            {userInitials}
+          <div className="w-[48px] h-full flex items-center justify-center shrink-0">
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center text-[0.6rem] font-extrabold text-white"
+              style={{ background: userColor }}
+            >
+              {userInitials}
+            </div>
           </div>
-          <div style={{ overflow: 'hidden', flex: 1 }}>
-            <p style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'hsl(42,22%,84%)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {userName}
-            </p>
-            <p style={{ fontSize: 'var(--text-2xs)', color: 'hsl(140,7%,48%)', textTransform: 'capitalize' }}>
-              {userRole}
-            </p>
+          
+          <div className={`flex flex-col items-start justify-center flex-1 min-w-0 pr-2 transition-opacity duration-200 ${textOpacity}`}>
+            <p className="text-xs font-semibold text-dark-text truncate w-full text-left">{userName}</p>
+            <p className="text-[0.6rem] text-dark-muted capitalize truncate w-full text-left">{userRole}</p>
           </div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, transition: 'transform 0.15s', transform: showMenu ? 'rotate(180deg)' : 'none' }}>
-            <path d="M18 15l-6-6-6 6" stroke="hsl(140,7%,48%)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+
+          <div className={`shrink-0 flex items-center transition-opacity duration-200 pr-2 ${textOpacity}`}>
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none"
+              className="transition-transform"
+              style={{ transform: showMenu ? 'rotate(180deg)' : 'none' }}
+            >
+              <path d="M18 15l-6-6-6 6" stroke="var(--color-dark-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
         </button>
       </div>
     </aside>
   )
 }
+
+

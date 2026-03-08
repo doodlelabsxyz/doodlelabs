@@ -1,26 +1,183 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ─── Design Tokens ─────────────────────────────────────────────────────────── */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* ── Light surfaces ─────────────────────────── */
+  --color-cream:     hsl(42, 38%, 96%);
+  --color-island:    hsl(42, 25%, 99%);
+  --color-island-2:  hsl(40, 18%, 93%);
+  --color-border:    hsl(38, 14%, 88%);
+
+  --color-ink:       hsl(24, 20%, 11%);
+  --color-muted:     hsl(24, 10%, 44%);
+  --color-ghost:     hsl(24, 8%, 64%);
+
+  /* ── Dark surface system (sidebar / hero) ────── */
+  --color-dark:        #0F1A14;
+  --color-dark-raised: #172219;
+  --color-dark-hover:  #1F2E23;
+  --color-dark-text:   hsl(42, 22%, 84%);
+  --color-dark-muted:  hsl(140, 7%, 48%);
+  --color-dark-ghost:  hsl(140, 5%, 30%);
+
+  /* ── Brand / active accent ───────────────────── */
+  --color-brand:       #5421A2;
+  --color-brand-light: #E4D9FF;
+
+  /* ── Content type — full saturation ─────────── */
+  --color-coral:     hsl(14, 72%, 62%);
+  --color-lemon:     hsl(40, 95%, 62%);
+  --color-mint:      hsl(161, 58%, 50%);
+  --color-lavender:  hsl(268, 60%, 68%);
+  --color-sky:       hsl(200, 82%, 58%);
+
+  /* ── Content type — card tints ───────────────── */
+  --color-coral-tint:    hsl(14, 72%, 95%);
+  --color-lemon-tint:    hsl(40, 90%, 94%);
+  --color-mint-tint:     hsl(161, 55%, 93%);
+  --color-lavender-tint: hsl(268, 55%, 95%);
+  --color-sky-tint:      hsl(200, 75%, 94%);
+
+  /* ── Semantic ─────────────────────────────────── */
+  --color-success:   hsl(154, 50%, 40%);
+  --color-danger:    hsl(4, 75%, 56%);
+  --color-warning:   hsl(35, 92%, 52%);
+
+  /* Typography — Plus Jakarta Sans */
+  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+
+  /* Font scale — Perfect Fourth (×1.333) from 14px base */
+  --text-2xs: 0.656rem;   /* 10.5px */
+  --text-xs:  0.75rem;    /* 12px   */
+  --text-sm:  0.875rem;   /* 14px   */
+  --text-base: 1rem;      /* 16px   */
+  --text-md:  1.167rem;   /* 18.7px */
+  --text-lg:  1.556rem;   /* 24.9px */
+  --text-xl:  2.075rem;   /* 33.2px */
+  --text-2xl: 2.769rem;   /* 44.3px */
+
+  /* Border radius */
+  --radius-sm:   0.5rem;    /* 8px  */
+  --radius-md:   0.875rem;  /* 14px */
+  --radius-lg:   1.25rem;   /* 20px */
+  --radius-xl:   1.75rem;   /* 28px */
+  --radius-full: 9999px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ─── Motion System ─────────────────────────────────────────────────────────── */
+
+:root {
+  --spring-snap:   cubic-bezier(0.87, 0, 0.13, 1);    /* explosive start, heavy landing */
+  --spring-gentle: cubic-bezier(0.34, 1.56, 0.64, 1); /* slight overshoot, organic feel */
+  --spring-out:    cubic-bezier(0.55, 0, 1, 0.45);    /* fast exit */
+
+  --dur-fast:   200ms;
+  --dur-base:   320ms;
+  --dur-slow:   480ms;
+}
+
+/* ─── Spacing Scale (Fibonacci from 8px) ────────────────────────────────────── */
+
+:root {
+  --s1:  8px;
+  --s2:  13px;
+  --s3:  21px;
+  --s4:  34px;
+  --s5:  55px;
+  --s6:  89px;
+}
+
+/* ─── View Transitions ──────────────────────────────────────────────────────── */
+
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(root) {
+  animation: vt-out var(--dur-fast) var(--spring-out) both;
+}
+
+::view-transition-new(root) {
+  animation: vt-in var(--dur-base) var(--spring-gentle) both;
+}
+
+@keyframes vt-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-8px) scale(0.98); }
+}
+
+@keyframes vt-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ─── Base Styles ───────────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  min-height: 100dvh;
+  /* Prevent layout shift from scrollbar */
+  scrollbar-gutter: stable;
+}
+
+/* App root — full viewport, layout handled per-screen */
+#app-root {
+  min-height: 100dvh;
+  position: relative;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+/* ─── Selection ─────────────────────────────────────────────────────────────── */
+
+::selection {
+  background: hsl(200, 88%, 65%, 0.25);
+  color: var(--color-ink);
+}
+
+/* ─── Focus Ring ────────────────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--color-sky);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+/* ─── Utility: Light-source card gradient ───────────────────────────────────── */
+/* Usage: add class "card-light" to any island that should feel physically lit  */
+
+.card-light {
+  background-image: radial-gradient(
+    ellipse at 20% 20%,
+    hsl(0 0% 100% / 0.55),
+    transparent 70%
+  );
 }

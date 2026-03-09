@@ -100,7 +100,7 @@ export default function UpcomingTasksPage() {
   const grouped = groupByDay(tasks)
 
   return (
-    <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)' }}>
+    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)' }}>
 
       <div style={{ background: '#0F1A14', padding: '18px 20px 16px', flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>

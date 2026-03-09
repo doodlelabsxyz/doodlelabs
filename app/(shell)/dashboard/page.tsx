@@ -173,7 +173,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Scrollable content ─────────────────────────────────────────────── */}
-      <main style={{ padding:'16px', paddingBottom:'100px', flex:1, overflowY:'auto' }}>
+      <main className="page-main" style={{ padding:'16px', paddingBottom:'100px', flex:1, overflowY:'auto' }}>
 
         {/* Metrics */}
         <div ref={metricsRef} className="grid" style={{ gridTemplateColumns:'repeat(2,1fr)', gap:'12px', marginBottom:'16px' }}>

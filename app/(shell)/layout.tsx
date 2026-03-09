@@ -6,11 +6,14 @@ import { DesktopSidebar, MobilePillNav } from '@/components/shell/PillNav'
 import { NAV_BY_ROLE, type Role } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { getInitials, getAvatarColor } from '@/lib/utils'
+import { OrgProvider, useOrg } from '@/lib/supabase/OrgContext'
 
 const SIDEBAR_KEY = 'sidebar-collapsed'
 
-export default function ShellLayout({ children }: { children: React.ReactNode }) {
+// Inner component — consumes OrgContext (must be a child of OrgProvider)
+function ShellContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  const { org } = useOrg()
   const [role, setRole] = useState<Role>('admin')
   const [userName, setUserName] = useState('Loading...')
   const [userInitials, setUserInitials] = useState('...')
@@ -117,6 +120,8 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         onLogout={handleLogout}
         collapsed={collapsed}
         onToggle={handleToggle}
+        orgName={org?.name}
+        orgPlan={org?.plan}
       />
       {children}
 
@@ -141,5 +146,14 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         <MobilePillNav items={navItems} />
       </div>
     </div>
+  )
+}
+
+// Outer layout — provides OrgContext to the entire shell
+export default function ShellLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <OrgProvider>
+      <ShellContent>{children}</ShellContent>
+    </OrgProvider>
   )
 }

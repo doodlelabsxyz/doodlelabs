@@ -8,6 +8,7 @@ export type UserProfile = {
   id: string
   name: string
   role: Role
+  org_id: string | null
 }
 
 export function useUser() {
@@ -21,7 +22,7 @@ export function useUser() {
       if (!auth) { setLoading(false); return }
       const { data } = await supabase
         .from('users')
-        .select('id, name, role')
+        .select('id, name, role, org_id')
         .eq('id', auth.id)
         .single()
       if (data) setUser(data as UserProfile)

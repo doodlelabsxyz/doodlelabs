@@ -145,7 +145,7 @@ export default function ClientNotesPage() {
   }
 
   return (
-    <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)' }}>
+    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)' }}>
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <div style={{ background: '#0F1A14', padding: '18px 20px 14px', flexShrink: 0 }}>

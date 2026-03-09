@@ -1,3 +1,82 @@
+// ─── SaaS / Multi-tenancy ─────────────────────────────────────────────────────
+
+export type OrgPlan = 'starter' | 'growth' | 'pro'
+
+export type OrgPlanStatus = 'trialing' | 'active' | 'past_due' | 'canceled'
+
+export interface Organization {
+  id: string
+  name: string
+  slug: string
+  logo_url?: string | null
+  plan: OrgPlan
+  plan_status: OrgPlanStatus
+  trial_ends_at?: string | null
+  stripe_customer_id?: string | null
+  stripe_subscription_id?: string | null
+  created_at: string
+}
+
+export interface Invite {
+  id: string
+  org_id: string
+  email: string
+  role: Role
+  token: string
+  invited_by?: string | null
+  expires_at: string
+  accepted_at?: string | null
+  created_at: string
+}
+
+export type PlanFeature =
+  | 'hasAnalytics'
+  | 'hasAudit'
+  | 'hasClientPortal'
+  | 'hasCustomDomain'
+
+export interface PlanLimits {
+  maxMembers: number        // -1 = unlimited
+  maxClients: number        // -1 = unlimited
+  storageMb: number
+  hasAnalytics: boolean
+  hasAudit: boolean
+  hasClientPortal: boolean
+  hasCustomDomain: boolean
+}
+
+export const PLAN_LIMITS: Record<OrgPlan, PlanLimits> = {
+  starter: {
+    maxMembers:      5,
+    maxClients:      3,
+    storageMb:       5120,   // 5 GB
+    hasAnalytics:    false,
+    hasAudit:        false,
+    hasClientPortal: false,
+    hasCustomDomain: false,
+  },
+  growth: {
+    maxMembers:      15,
+    maxClients:      15,
+    storageMb:       25600,  // 25 GB
+    hasAnalytics:    true,
+    hasAudit:        true,
+    hasClientPortal: true,
+    hasCustomDomain: false,
+  },
+  pro: {
+    maxMembers:      -1,
+    maxClients:      -1,
+    storageMb:       102400, // 100 GB
+    hasAnalytics:    true,
+    hasAudit:        true,
+    hasClientPortal: true,
+    hasCustomDomain: true,
+  },
+}
+
+// ─── Roles ────────────────────────────────────────────────────────────────────
+
 export type Role =
   | 'admin'
   | 'writer'

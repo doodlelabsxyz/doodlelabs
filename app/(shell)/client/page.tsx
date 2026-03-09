@@ -137,7 +137,7 @@ export default function ClientPortalPage() {
   const userMap = new Map(users.map(u => [u.id, u]))
 
   return (
-    <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)' }}>
+    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)' }}>
 
       {/* ── Client hero ──────────────────────────────────────────────────── */}
       <div style={{ background: '#0F1A14', padding: '20px 20px 16px', flexShrink: 0 }}>

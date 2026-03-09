@@ -115,7 +115,7 @@ export default function TeamPage() {
   }
 
   return (
-    <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <div style={{ background: '#0F1A14', padding: '18px 20px 0', flexShrink: 0 }}>

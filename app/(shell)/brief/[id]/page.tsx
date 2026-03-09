@@ -296,7 +296,7 @@ export default function BriefPage() {
   const getReplies = (parentId: string) => comments.filter(c => c.parentId === parentId)
 
   return (
-    <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)', position: 'relative' }}>
+    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)', position: 'relative' }}>
 
       {saved && (
         <div ref={overlayRef} style={{

@@ -1,17 +1,19 @@
 # AgencyOS — Developer Handover
 
-**Last updated:** 2026-03-08
-**Purpose:** Full project context for resuming in a new chat session.
+**Last updated:** 2026-03-09
+**Status:** Multi-tenant SaaS foundation complete. Billing stubs in place. Ready for Stripe wiring + deployment.
 
 ---
 
 ## Project Summary
 
-AgencyOS is a mobile-first content planning and workflow management app for digital marketing agencies. Built with Next.js App Router + Tailwind CSS + TypeScript + Supabase.
+AgencyOS is a **multi-tenant SaaS** content planning and workflow management app for digital marketing agencies. Multiple agencies can sign up independently — each gets a fully isolated workspace.
 
 - **UI:** 100% complete (15 screens + extras)
-- **Backend:** Supabase (auth + DB + RLS) — fully wired to all main pages
-- **Status:** Feature-complete for v1.0. Notification system + audit log built. Ready to deploy.
+- **Backend:** Supabase (auth + PostgreSQL + RLS + Realtime) — all pages on real data
+- **Multi-tenancy:** Complete — `org_id` on all tables, RLS scoped per org, signup/invite/onboarding flows built
+- **Billing:** Stubs in place — needs Stripe wired up
+- **Email:** Resend integrated for invite + welcome emails
 
 ---
 
@@ -19,277 +21,332 @@ AgencyOS is a mobile-first content planning and workflow management app for digi
 
 | Layer | Choice |
 |-------|--------|
-| Framework | Next.js 14 App Router |
+| Framework | Next.js 16 App Router |
 | Styling | Inline `style={}` (existing pages) + Tailwind CSS (new components) |
 | Language | TypeScript (strict) |
 | Backend | Supabase (Auth + PostgreSQL + RLS + Realtime) |
+| Email | Resend (`/api/invite/send`, `/api/create-user`) |
 | Animations | GSAP + @gsap/react |
 | Deployment | Vercel (not yet deployed) |
+
+> **Next.js 16 note:** Middleware is named `proxy.ts` (not `middleware.ts`) and exports a named function `proxy` (not `middleware`).
 
 ---
 
 ## Supabase Project
 
 - **URL:** `https://ajjrhoimjyorhikggzic.supabase.co`
-- **Keys:** In `.env.local` (never commit this file)
+- **Keys:** In `.env.local` — never commit this file
 - **DB password:** `9XDjZAvVIczIR6Zr`
-- **Schema:** `supabase/schema.sql` — already run
-- **Seed:** `supabase/seed.sql` — already run (demo data)
 
-### SQL Files (run order matters)
+### SQL Files — Run Order
 
 | File | Status | Notes |
 |------|--------|-------|
 | `supabase/schema.sql` | ✅ Run | Full schema + RLS |
 | `supabase/seed.sql` | ✅ Run | Demo data |
-| `supabase/client-team.sql` | ✅ Run | `client_team` table (client↔role↔user mapping) |
-| `supabase/notifications-and-audit.sql` | ⚠️ NEEDS TO BE RUN | Audit log + all triggers + Realtime enable |
+| `supabase/client-team.sql` | ✅ Run | `client_team` table |
+| `supabase/notifications-and-audit.sql` | ⚠️ PENDING | Audit log + triggers + Realtime — run this before testing notifications |
+| `supabase/multi-tenant.sql` | ✅ Run | Adds `organizations` + `invites` tables, adds `org_id` to all tables, updates all RLS policies, adds `get_my_org_id()` function, backfills demo data |
 
-> **IMPORTANT:** Run `supabase/notifications-and-audit.sql` in Supabase SQL Editor before testing notifications.
+### Demo Org
+- **Name:** Demo Agency | **Slug:** `demo-agency` | **Plan:** `pro`
+- **UUID:** `00000000-0000-0000-0000-000000000001`
 
 ### Demo Auth Accounts (password: `AgencyOS2026!`)
 
-| Email | Name | Role | UUID |
-|-------|------|------|------|
-| admin@agencyos.app | Sarah Malik | admin | 48f5c1f8-7eaa-4a2d-bfdf-00cb85f33bf3 |
-| writer@agencyos.app | Omar Farooq | writer | bea5f187-a3e1-4926-9ff4-b7d19ab6f157 |
-| designer@agencyos.app | Zara Ahmed | designer | d792d016-1f2d-45ab-a6ac-3452399a344a |
-| videographer@agencyos.app | Bilal Chaudhry | videographer | 5b909891-35a8-4cbf-bd53-c2df8c311aed |
-| editor@agencyos.app | Nadia Khan | editor | 2025a9cc-256b-4886-ac54-6f31a82df451 |
-| poster@agencyos.app | Hamza Siddiqui | poster | d266274a-a556-4991-9c17-ae9fe5b6b471 |
-| client@agencyos.app | Fitness First PK | client | 17682a3a-b0fb-424f-8553-8334a88baf29 |
+| Email | Name | Role |
+|-------|------|------|
+| admin@agencyos.app | Sarah Malik | admin |
+| writer@agencyos.app | Omar Farooq | writer |
+| designer@agencyos.app | Zara Ahmed | designer |
+| videographer@agencyos.app | Bilal Chaudhry | videographer |
+| editor@agencyos.app | Nadia Khan | editor |
+| poster@agencyos.app | Hamza Siddiqui | poster |
+| client@agencyos.app | Fitness First PK | client |
 
 ---
 
-## DB Tables
+## Environment Variables
+
+```env
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=https://ajjrhoimjyorhikggzic.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+DATABASE_URL=postgresql://...
+
+# App
+NEXT_PUBLIC_APP_URL=http://localhost:3000   # change to https://yourdomain.com in prod
+
+# Super admin (comma-separated emails that can access /superadmin)
+SUPER_ADMIN_EMAILS=you@yourdomain.com
+
+# Resend email
+RESEND_API_KEY=re_...
+RESEND_FROM_EMAIL=noreply@yourdomain.com    # must be on a Resend-verified domain
+
+# Billing (add when Stripe is wired)
+# STRIPE_SECRET_KEY=sk_...
+# STRIPE_WEBHOOK_SECRET=whsec_...
+# BILLING_WEBHOOK_SECRET=...
+```
+
+---
+
+## Database Schema
+
+### All Tables
 
 ```
-users, clients, client_users, content_pieces, tasks, assets,
-content_scripts, ideas, feedback_comments, invoices,
-salary_records, expenses, notifications, audit_log, client_team
+organizations     — each agency's account (plan, billing, slug)
+invites           — pending invite tokens (email-based onboarding)
+users             — team members + clients (linked to auth.users by id)
+clients           — client accounts within an org
+client_users      — maps client-role users to their client
+content_pieces    — content items (briefs, posts, reels, stories)
+tasks             — individual tasks assigned to team members
+assets            — file/media assets
+content_scripts   — scripts linked to content pieces
+ideas             — ideas board
+feedback_comments — client feedback on content
+invoices          — client invoices
+salary_records    — team payroll
+expenses          — agency expenses
+notifications     — in-app notification queue
+audit_log         — immutable audit trail (triggers write here)
+client_team       — default assignee per role per client
 ```
 
-### Key column conventions
-- All snake_case: `due_date`, `client_id`, `assigned_to`, `brand_color`, `avatar_color`
-- `content_pieces.assigned_to` → `TEXT[]` (array of user IDs as strings)
-- `tasks.assigned_to` → `UUID` (single user)
-- `clients.id` → `TEXT` (not UUID — important for joins)
+All tables (except `organizations` and `invites`) have an `org_id UUID` column. All RLS policies scope queries to the authenticated user's org via `get_my_org_id()`.
+
+### Key Column Conventions
+
+- `clients.id` → `TEXT` (not UUID) — important for joins
 - `users.id` → `UUID`
-- DATE columns return `"YYYY-MM-DD"` strings — use `new Date(s + 'T00:00:00')` to avoid timezone shift
-- TIMESTAMPTZ returns ISO string — use `new Date(isoString)` directly
+- `content_pieces.id` → `TEXT`
+- `tasks.assigned_to` → `UUID` (single user)
+- `content_pieces.assigned_to` → `TEXT[]` (array of user IDs as strings)
+- `client_team`: `client_id TEXT`, `role TEXT`, `user_id UUID`
+- DATE columns return `"YYYY-MM-DD"` strings → use `new Date(s + 'T00:00:00')` to avoid timezone shift
 
-### client_team table
+### Important SQL Functions
+
 ```sql
--- Maps one default assignee per role per client
-client_id TEXT REFERENCES clients(id)
-role      TEXT  -- writer | designer | videographer | editor | poster
-user_id   UUID REFERENCES users(id)
-UNIQUE(client_id, role)
+-- Returns the org_id of the currently authenticated user (SECURITY DEFINER — bypasses RLS)
+get_my_org_id() → UUID
 ```
-Used by: `/clients` (Team tab), `/pipeline` (stage-responsible person), `/brief/[id]` (auto-task creation), DB triggers (smart notifications)
+
+Used in all RLS policies. Never remove.
 
 ---
 
-## Project File Structure
+## File Structure
 
 ```
 app/
-  (shell)/              # Authenticated shell layout
-    layout.tsx          # Shell layout — reads user profile, mounts nav, Realtime badge
-    dashboard/          # Admin dashboard
-    calendar/           # Content calendar (month/week/day views)
-    planning/           # Monthly planning + quota view
-    pipeline/           # Kanban pipeline (stage-responsible person, reassign)
-    tasks/              # Employee task board (marks done → advances pipeline status)
-    ideas/              # Ideas board
-    finance/            # Invoices + payroll + expenses
-    team/               # Team management + workload
-    clients/            # Client management (Team tab, content quota, edit)
-    brief/[id]/         # Content brief (create → auto-tasks from client_team)
-    notifications/      # Notification center (Realtime live updates + toast + mark-read)
-    audit/              # Audit log viewer (admin only) — NEW
-    assets/             # Asset library
-    analytics/          # Analytics
-    settings/           # Account settings + logout
-    client/             # Client portal (role-aware)
-      page.tsx          # Client portal home
-      calendar/         # Client calendar (month/week/day views) — improved
-      notes/            # Client feedback notes
-      approval/[id]/    # Content approval screen
+  (shell)/                  # Authenticated shell (requires login)
+    layout.tsx              # OrgProvider + user profile + realtime badge + PillNav
+    dashboard/              # Admin dashboard
+    calendar/               # Content calendar (month/week/day)
+    planning/               # Monthly planning + quota view
+    pipeline/               # Kanban pipeline
+    tasks/                  # Task board (done → advances pipeline)
+    tasks/upcoming/         # Upcoming tasks
+    tasks/done/             # Completed tasks
+    ideas/                  # Ideas board
+    finance/                # Invoices + payroll + expenses
+    team/                   # Team management + workload
+    clients/                # Client management (master-detail, Team tab)
+    brief/[id]/             # Content brief editor
+    notifications/          # Notification center (Realtime)
+    audit/                  # Audit log viewer (admin only)
+    assets/                 # Asset library
+    analytics/              # Analytics
+    settings/               # 4 tabs: Profile | Organisation | Team | Billing
+    settings/billing/       # Plan comparison + upgrade placeholders
+    client/                 # Client portal (role-aware)
+    client/calendar/        # Client calendar
+    client/notes/           # Client feedback notes
+    client/approval/[id]/   # Content approval screen
+
   api/
-    create-user/        # POST — create auth user + public.users + client_users
-  auth/
-    callback/           # Supabase auth callback handler
-  login/                # Login page
-  page.tsx              # Root redirect → /dashboard
+    auth/signup/            # POST — create org + admin user (public route)
+    auth/callback/          # Supabase auth callback
+    create-user/            # POST — create team/client user directly (sets org_id, sends welcome email)
+    invite/send/            # POST — create invite row + send Resend email
+    invite/[token]/         # GET  — validate token, return public invite info
+    invite/accept/          # POST — create auth user + users row from invite token
+    billing/create-checkout/ # POST — STUB (501) — wire Stripe here
+    billing/portal/         # POST — STUB (501) — wire Stripe here
+    billing/webhook/        # POST — STUB — verifies BILLING_WEBHOOK_SECRET, logs event
+
+  signup/                   # Agency signup page (public)
+  onboarding/               # 3-step wizard after signup (public)
+  invite/[token]/           # Accept invite page (public)
+  login/                    # Login page (public)
+  superadmin/               # Super admin platform overview (server component, outside shell)
+  page.tsx                  # Root redirect → /dashboard
 
 components/
   shell/
-    PillNav.tsx         # MobilePillNav + DesktopSidebar (audit icon added)
-  CreateUserModal.tsx   # Reusable modal: create login for client or team member
-  AddClientModal.tsx    # Modal: add new client to DB
+    PillNav.tsx             # MobilePillNav + DesktopSidebar (org name + plan badge)
+    TopBar.tsx              # Page top bar
+  CreateUserModal.tsx       # Create login for team member or client (sends welcome email)
+  AddClientModal.tsx        # Add new client (sets org_id from useOrg())
 
 lib/
   supabase/
-    client.ts           # Browser Supabase client
-    server.ts           # Server client + createAdminClient() (service role)
-    useUser.ts          # Hook: auth.getUser() → public.users profile
-  types.ts              # All shared types — NavItem icon union now includes 'audit'
-  mock/
-    data.ts             # Unused — all pages now on real data
+    client.ts               # Browser Supabase client
+    server.ts               # createClient() (SSR) + createAdminClient() (service role, NOT SSR)
+    useUser.ts              # Hook: auth user → public.users profile (includes org_id)
+    OrgContext.tsx          # OrgProvider + useOrg() hook
+  hooks/
+    usePlanGate.ts          # usePlanGate(feature) → { allowed, requiredPlan, plan }
+  types.ts                  # All shared types (OrgPlan, Organization, Invite, PLAN_LIMITS, etc.)
+  utils.ts                  # getInitials, getAvatarColor, etc.
 
-middleware.ts           # Auth session refresh + role-aware redirect
+proxy.ts                    # Next.js 16 middleware (auth guard + superadmin gate)
 supabase/
-  schema.sql            # Full DB schema (run once)
-  seed.sql              # Demo data with real UUIDs (run once)
-  client-team.sql       # client_team table (run once, after schema.sql)
-  notifications-and-audit.sql  # Audit log + triggers + Realtime (PENDING RUN)
+  schema.sql                # Full DB schema
+  seed.sql                  # Demo data
+  client-team.sql           # client_team table
+  notifications-and-audit.sql  # Audit log + triggers + Realtime (⚠️ PENDING RUN)
+  multi-tenant.sql          # Multi-tenancy migration (✅ run)
+  reset.sql                 # Wipe all data (for testing — includes organizations + invites)
 ```
 
 ---
 
-## Pages Wired to Supabase (Real Data)
+## Multi-Tenancy Architecture
 
-| Page | Data Sources | Mutations |
-|------|-------------|-----------|
-| `/dashboard` | content_pieces, clients, users, notifications | — |
-| `/tasks` | tasks + content + client joins | status update → advances content pipeline |
-| `/pipeline` | content_pieces + client + client_team | card move, stage-person reassign |
-| `/calendar` | content_pieces by date range | — |
-| `/planning` | clients (quotas) + content_pieces by month | navigates to /brief/new |
-| `/ideas` | ideas + client + author joins | insert, shortlist, convert |
-| `/finance` | invoices, salary_records, expenses, clients, users | mark paid, insert invoice/expense/payroll |
-| `/team` | users, tasks, content_pieces, clients | role/salary/active update, add member |
-| `/clients` | clients, invoices, content_pieces, feedback_comments, client_team, users | mark paid, edit client, quota, team assign |
-| `/brief/[id]` | content_pieces, content_scripts, feedback_comments | full save, auto-task creation, comments |
-| `/notifications` | notifications | mark read (per-item ✓ button + mark all), Realtime live |
-| `/audit` | audit_log + actor join | filter by table/action, paginated, diff view |
-| `/client` | content_pieces for client | role-aware client lookup |
-| `/client/approval/[id]` | content_piece + client + users | approve or revision |
-| `/client/calendar` | content_pieces by month/week/day | role-aware, 3-view tabs |
-| `/client/notes` | feedback_comments via content_pieces | markResolved, sendReply |
-| `/settings` | users profile | logout |
-| `/assets` | assets + client + user joins | filter by type/client, grid/list |
-| `/analytics` | content_pieces, clients, users, tasks | period filter |
+### How isolation works
 
----
+Every table has `org_id UUID`. All RLS policies follow this pattern:
 
-## Notification System (built, SQL pending)
-
-### How it works
-- **Delivery:** Supabase Realtime streams DB inserts to subscribed clients via websocket
-- **Generation:** PostgreSQL SECURITY DEFINER triggers insert notification rows on events
-- **RLS:** Users only receive notifications matching `for_user_id = auth.uid()` OR `get_my_role() = ANY(for_roles)`
-
-### Trigger → Notification map
-
-| Trigger | Event | Who gets notified |
-|---------|-------|-------------------|
-| `trg_task_inserted` | Task assigned | Assigned user (`for_user_id`) |
-| `trg_content_updated` | Status → `client-review` | All client_users for that client |
-| `trg_content_updated` | Status → `approved` | Admin role broadcast |
-| `trg_content_updated` | Status → `brief-ready` | Writer from client_team |
-| `trg_content_updated` | Status → `in-design` | Designer or Videographer from client_team |
-| `trg_content_updated` | Status → `in-editing` | Editor from client_team |
-| `trg_content_updated` | Status → `ready-for-review` | Poster from client_team |
-| `trg_feedback_inserted` | Client posts feedback | Admin role broadcast |
-
-### Audit log
-- Every INSERT/UPDATE on content_pieces, tasks, invoices, feedback_comments → row in `audit_log`
-- Stores: table_name, record_id, action, actor_id, old_data (JSONB), new_data (JSONB), created_at
-- Viewable at `/audit` (admin only) — filterable by table + action, paginated, click to see diff
-
-### Realtime in code
-```ts
-// layout.tsx — badge updates live
-supabase.channel('notif-badge')
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => fetchNotifCount())
-  .subscribe()
-
-// notifications/page.tsx — live prepend + toast
-supabase.channel('notif-page')
-  .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
-    setNotifs(prev => [payload.new, ...prev])
-    showToast(payload.new.title)
-  })
-  .subscribe()
-```
-
----
-
-## Pipeline Advancement (auto)
-
-When a team member marks a task `done`, the linked content piece's status advances:
-
-| Task role | Content status advances to |
-|-----------|--------------------------|
-| writer | `brief-ready` |
-| designer | `in-editing` |
-| videographer | `in-editing` |
-| editor | `ready-for-review` |
-| poster | `posted` |
-
-Logic in `app/(shell)/tasks/page.tsx` → `updateStatus()`. Only advances forward (no regression).
-
----
-
-## Auth & User Flow
-
-### Login flow
-1. User enters email + password on `/login`
-2. `supabase.auth.signInWithPassword()`
-3. Middleware reads `user.user_metadata.role`:
-   - `'client'` → redirect to `/client`
-   - Everyone else → redirect to `/dashboard`
-4. Shell layout reads `public.users` for name, initials, role, avatar_color
-
-### Creating new users (Admin only)
-
-**Via the app:** Team page → "+ Add Member" or Clients page → client → Overview → "Create Login"
-
-**`POST /api/create-user` body:**
-```json
-{
-  "email": "user@example.com",
-  "password": "Password123!",
-  "name": "Full Name",
-  "role": "writer",
-  "clientId": "optional-for-client-role"
-}
-```
-
-**Via SQL (manual fallback):**
 ```sql
-SELECT id FROM auth.users WHERE email = 'x@example.com';
-INSERT INTO users (id, name, initials, role, email, avatar_color, active)
-VALUES ('UUID', 'Name', 'NN', 'writer', 'email', 'hsl(25,82%,60%)', true);
--- For client role also:
-INSERT INTO client_users (user_id, client_id) VALUES ('UUID', 'CLIENT-UUID');
+CREATE POLICY "org_isolation" ON some_table
+  USING (org_id = get_my_org_id());
+```
+
+`get_my_org_id()` is a `SECURITY DEFINER` function that reads `org_id` from `public.users` for the current `auth.uid()`. It bypasses RLS itself to avoid circular dependency.
+
+### OrgContext in React
+
+```tsx
+// In any shell page:
+import { useOrg } from '@/lib/supabase/OrgContext'
+
+const { org } = useOrg()
+// org.id, org.name, org.slug, org.plan, org.plan_status
+```
+
+`OrgProvider` wraps the entire shell in `app/(shell)/layout.tsx`.
+
+### Plan gating
+
+```tsx
+import { usePlanGate } from '@/lib/hooks/usePlanGate'
+
+const { allowed, requiredPlan } = usePlanGate('audit_log')
+// PLAN_LIMITS defined in lib/types.ts
+```
+
+### Important: createAdminClient
+
+`createAdminClient()` in `lib/supabase/server.ts` uses `createClient` from `@supabase/supabase-js` (NOT `@supabase/ssr`). This is required for `auth.admin.*` operations. It is **synchronous** — do not `await` it.
+
+```ts
+const supabase = createAdminClient()           // ✅ correct
+const supabase = await createAdminClient()     // ❌ wrong — no await needed
 ```
 
 ---
 
-## Key Patterns
+## User Flows
 
-```ts
-// All pages are 'use client' — use browser client
-import { createClient } from '@/lib/supabase/client'
-import { useUser } from '@/lib/supabase/useUser'
+### New agency signup
+1. `/signup` → fills name, email, password, agency name, slug
+2. `POST /api/auth/signup` → creates `organizations` row + auth user + `users` row (role: admin)
+3. Signs in immediately → redirects to `/onboarding`
+4. `/onboarding` → 3 steps: Welcome → Add first client → Invite first team member
 
-// Normalize nested join (may be object or array)
-const obj = Array.isArray(r.client) ? r.client[0] ?? null : r.client
+### Invite team member
+1. Admin goes to `/settings` → Team tab → clicks "Invite"
+2. Modal sends `POST /api/invite/send` → creates `invites` row → Resend email with link
+3. Invitee clicks link → `/invite/[token]` → fills name + password → `POST /api/invite/accept`
+4. Creates auth user + `users` row (with correct `org_id`)
 
-// Optimistic update pattern
-setState(prev => prev.map(i => i.id === id ? { ...i, status: 'done' } : i))
-await supabase.from('tasks').update({ status: 'done' }).eq('id', id)
+### Create user directly (Team page / Clients page)
+1. Admin clicks "+ Add Member" or "Create Login" on a client
+2. `CreateUserModal` → `POST /api/create-user`
+3. Creates auth user + `users` row with `org_id` from admin's session
+4. Sends Resend welcome email with credentials
 
-// DATE string → local Date (no timezone shift)
-new Date(row.due_date + 'T00:00:00')
+### Super admin
+- Visit `/superadmin` while signed in with an email in `SUPER_ADMIN_EMAILS`
+- Server component — reads all orgs via `createAdminClient()`
+- Shows all agencies, member counts, plan status
 
-// Supabase Realtime cleanup pattern
-const channel = supabase.channel('name').on('postgres_changes', {...}, handler).subscribe()
-return () => { channel.unsubscribe() }
-```
+---
+
+## Proxy (Middleware)
+
+`proxy.ts` runs on every request. Key rules:
+
+| Path | Auth required? |
+|------|---------------|
+| `/`, `/login`, `/signup`, `/onboarding` | No |
+| `/invite/*` | No |
+| `/api/auth/*` | No |
+| `/api/invite/*` | No |
+| `/api/billing/webhook` | No (verified by signature) |
+| Everything else | Yes → redirects to `/login` |
+| `/superadmin` | Yes + email must be in `SUPER_ADMIN_EMAILS` |
+| `/login`, `/signup` while logged in | Redirects to `/dashboard` |
+
+---
+
+## Email (Resend)
+
+Two routes send email:
+
+| Route | Trigger | Template |
+|-------|---------|----------|
+| `POST /api/invite/send` | Admin invites someone | Invite link with token |
+| `POST /api/create-user` | Admin creates user directly | Welcome email with credentials |
+
+**Requirements:**
+- `RESEND_API_KEY` must be set
+- `RESEND_FROM_EMAIL` must be an address on a **Resend-verified domain** (not Gmail)
+- If Resend fails in `/api/create-user`, the user is still created (email is best-effort)
+- If Resend fails in `/api/invite/send`, the route returns 502 (no invite sent)
+
+---
+
+## Billing (Stubs — Needs Stripe)
+
+Three routes exist as stubs:
+
+| Route | Status | What to implement |
+|-------|--------|-------------------|
+| `POST /api/billing/create-checkout` | 501 stub | Create Stripe Checkout session → return URL |
+| `POST /api/billing/portal` | 501 stub | Create Stripe Customer Portal session → return URL |
+| `POST /api/billing/webhook` | Placeholder | Handle `subscription.*`, `invoice.payment_failed`, `customer.created` |
+
+When Stripe is wired:
+1. Add `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` to env
+2. Replace stubs in `/api/billing/create-checkout` and `/api/billing/portal`
+3. Add signature verification + event handlers in `/api/billing/webhook`
+4. Update `organizations.plan`, `plan_status`, `stripe_customer_id`, `stripe_subscription_id` from webhook events
+
+---
+
+## Mobile UI Notes
+
+- Pill nav is `fixed bottom-5` — all scroll containers have `paddingBottom: 100px` (mobile only via `.page-main` CSS class in `globals.css`)
+- `clients/page.tsx` — master-detail layout: on mobile (`< 768px`) the list panel hides completely when a client is selected (CSS classes `clients-layout`, `has-detail`, `clients-list-panel`, `clients-detail-panel`)
+- `pipeline/page.tsx` — horizontal snap scroll on mobile, each column has `paddingBottom: 100px`
 
 ---
 
@@ -301,78 +358,98 @@ staff:   Today, Upcoming, Done | Calendar, Ideas, Alerts
 client:  This Week, Calendar, Notes, Alerts
 ```
 
-**NavItem icon union** (add new icons to both `lib/types.ts` AND `components/shell/PillNav.tsx`):
+`NAV_BY_ROLE` is defined in `lib/types.ts`. To add a new nav item:
+1. Add the icon name to the union in `lib/types.ts`
+2. Add the SVG case in `components/shell/PillNav.tsx` (`NavIcon` component)
+
+---
+
+## Key Coding Patterns
+
+```ts
+// All shell pages are 'use client' — use browser client
+import { createClient } from '@/lib/supabase/client'
+
+// Server-side / API routes — session-aware client
+import { createClient } from '@/lib/supabase/server'   // await createClient()
+
+// Admin operations (auth.admin.*, bypasses RLS)
+import { createAdminClient } from '@/lib/supabase/server'
+const supabase = createAdminClient()  // no await
+
+// Normalize nested Supabase join (may return object or single-item array)
+const obj = Array.isArray(r.client) ? r.client[0] ?? null : r.client
+
+// Optimistic update pattern
+setState(prev => prev.map(i => i.id === id ? { ...i, status: 'done' } : i))
+await supabase.from('tasks').update({ status: 'done' }).eq('id', id)
+
+// DATE string → local Date (no timezone shift)
+new Date(row.due_date + 'T00:00:00')
+
+// Realtime cleanup
+const channel = supabase.channel('name').on('postgres_changes', {...}, handler).subscribe()
+return () => { channel.unsubscribe() }
+
+// Never use CSS custom properties in style={{}} — use literal HSL/hex
+style={{ color: 'hsl(25,82%,60%)' }}   // ✅
+style={{ color: 'var(--color-brand)' }} // ❌ won't work in React inline styles
 ```
-'home'|'calendar'|'planning'|'pipeline'|'team'|'tasks'|'upcoming'|
-'done'|'week'|'notes'|'notifications'|'ideas'|'finance'|'clients'|'audit'
-```
 
 ---
 
-## Design System
+## What's Done
 
-| Token | Value |
-|-------|-------|
-| Background | `hsl(42,30%,97%)` warm cream |
-| Brand accent | `hsl(25,82%,60%)` warm amber |
-| Dark sidebar | `#0F1A14` |
-| Success | `hsl(154,50%,40%)` |
-| Error/Overdue | `hsl(4,72%,50%)` |
-| Font | Plus Jakarta Sans |
-
-**Content type colors:**
-| Type | Color |
-|------|-------|
-| Graphic | `hsl(14,72%,62%)` coral |
-| Video | `hsl(40,95%,52%)` yellow |
-| Reel | `hsl(161,58%,44%)` mint |
-| Story | `hsl(268,60%,68%)` lavender |
-
-**Rules:**
-- Never use CSS custom properties in `style={}` — literal HSL/hex only
-- Run `npx tsc --noEmit` after every change
-- Mobile-first: 375px base, `md:` breakpoint for desktop
+- [x] All 15 screens + extras (UI complete)
+- [x] All pages wired to Supabase (real data)
+- [x] Notification system (Realtime live badge + toast + per-item mark-read)
+- [x] Audit log (`/audit` page, SECURITY DEFINER triggers)
+- [x] Pipeline auto-advancement (task done → content status advances)
+- [x] Client team assignments (default assignee per role per client)
+- [x] Multi-tenancy foundation (`org_id` on all tables, RLS updated)
+- [x] Signup + onboarding flow
+- [x] Invite flow (token-based, Resend email)
+- [x] `/superadmin` platform overview
+- [x] Settings page (Profile / Organisation / Team / Billing tabs)
+- [x] `usePlanGate` feature gating hook
+- [x] `/api/create-user` sets `org_id` + sends welcome email
+- [x] Mobile pill nav clearance (100px padding on all scroll containers)
+- [x] Mobile clients master-detail (list hides when detail opens)
 
 ---
 
-## Deployment (Not Done Yet)
+## What's Left
 
-**Steps:**
-1. Push repo to GitHub
-2. Import on vercel.com → select repo
-3. Add env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-4. Deploy
-
----
-
-## What's Left To Build (Priority Order)
-
-### Must do before launch
+### Before launch (required)
 - [ ] **Run `supabase/notifications-and-audit.sql`** in Supabase SQL Editor
-- [ ] **Deploy to Vercel** — push to GitHub, connect Vercel, add env vars
-- [ ] **Wipe seed data** — delete demo records, enter real client/team data
+- [ ] **Wire Stripe billing** — replace stubs in `/api/billing/` routes
+- [ ] **Deploy to Vercel** — push to GitHub, add all env vars
+- [ ] **Fix any `org_id = null` users** from before multi-tenancy was added:
+  ```sql
+  UPDATE users SET org_id = (SELECT id FROM organizations LIMIT 1) WHERE org_id IS NULL;
+  ```
 
-### High Priority
-- [ ] **Wire `/assets` page** to real Supabase data (file upload + Drive integration)
-- [ ] **Wire `/analytics` page** to real Supabase data
+### High priority
+- [ ] **Enforce plan limits** — use `usePlanGate` on team/client creation (show upgrade modal when limit hit)
+- [ ] **Subdomain routing** — `[slug].agencyos.app` per agency (Vercel wildcard domain)
 
-### Medium Priority
+### Medium priority
 - [ ] **Google Drive integration** — asset upload/storage
-- [ ] **Resend email** — invite emails on user creation, approval notifications
+- [ ] **Automated onboarding emails** — Day 1 / Day 3 / Day 7 sequence via Resend
 
-### Low Priority / Future
-- [ ] **AI caption generator** — Claude API to generate captions from brief
-- [ ] **Social media API posting** — direct post to Instagram/TikTok
-- [ ] **Analytics auto-pull** — pull real engagement data from platform APIs
-- [ ] **Billing / subscription** — for selling AgencyOS to other agencies
+### Future
+- [ ] AI caption/brief generator (Claude API)
+- [ ] Social media posting (Instagram, TikTok APIs)
+- [ ] White-label client portal (custom agency branding)
 
 ---
 
-## Known Issues / Notes
+## Known Gotchas
 
-- `notifications-and-audit.sql` must be run before the notification/audit features work end-to-end
+- **Supabase free tier pauses** after ~1 week inactivity — restore from dashboard if you get `ENOTFOUND` errors
+- **`notifications-and-audit.sql` must be run** for the notification/audit features to work
 - `content_pieces.assigned_to` is `TEXT[]` not UUID[] — use `.includes(userId)` not `.eq()`
-- Nested Supabase joins may return object or array — always normalize
-- Supabase free tier projects **pause after ~1 week of inactivity** — restore from dashboard if you get `ENOTFOUND` errors
-- Mobile floating avatar in `layout.tsx` is commented out — mobile settings need a different UX approach
-- `client_team` RLS: no policy yet — add one if you get permission errors querying it from client pages
+- Nested Supabase joins may return object or array — always normalize (see pattern above)
+- `createAdminClient()` is synchronous — never `await` it
+- Resend `RESEND_FROM_EMAIL` must be on a verified domain — Gmail addresses won't work
+- In Next.js 16, middleware is `proxy.ts` exporting a named `proxy` function — not `middleware.ts`

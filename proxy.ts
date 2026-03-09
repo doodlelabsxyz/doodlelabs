@@ -1,6 +1,9 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Routes accessible without a session
+const PUBLIC_PATHS = ['/', '/login', '/signup', '/onboarding', '/auth/callback']
+
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
@@ -25,14 +28,17 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  // Refresh session — IMPORTANT: do not add logic between createServerClient and getUser
+  // IMPORTANT: do not add any logic between createServerClient and getUser
   const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
 
-  // Public routes that don't need auth
-  const publicRoutes = ['/login', '/auth/callback']
-  const isPublic = publicRoutes.some(r => pathname.startsWith(r))
+  const isPublic = PUBLIC_PATHS.includes(pathname)
+    || pathname.startsWith('/invite/')
+    || pathname.startsWith('/api/auth/')
+    || pathname.startsWith('/api/invite/')
+    || pathname === '/api/billing/webhook'
+  const isSuperAdmin = pathname.startsWith('/superadmin')
 
   // Redirect unauthenticated users to login
   if (!user && !isPublic) {
@@ -41,12 +47,24 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Redirect authenticated users away from login — role-aware
-  if (user && pathname === '/login') {
+  // Redirect authenticated users away from login/signup
+  if (user && (pathname === '/login' || pathname === '/signup')) {
     const url = request.nextUrl.clone()
-    const role = user.user_metadata?.role as string | undefined
-    url.pathname = role === 'client' ? '/client' : '/dashboard'
+    url.pathname = '/dashboard'
     return NextResponse.redirect(url)
+  }
+
+  // Super admin gate — check against SUPER_ADMIN_EMAILS env var
+  if (isSuperAdmin && user) {
+    const superAdminEmails = (process.env.SUPER_ADMIN_EMAILS ?? '')
+      .split(',')
+      .map(e => e.trim())
+      .filter(Boolean)
+    if (!superAdminEmails.includes(user.email ?? '')) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
   }
 
   return supabaseResponse
@@ -54,7 +72,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Match all routes except static files and Next.js internals
     '/((?!_next/static|_next/image|favicon.ico|images|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

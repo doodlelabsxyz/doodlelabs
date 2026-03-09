@@ -301,6 +301,8 @@ export function DesktopSidebar({
   onLogout,
   collapsed,
   onToggle,
+  orgName,
+  orgPlan,
 }: {
   items: NavItem[]
   userName: string
@@ -311,6 +313,8 @@ export function DesktopSidebar({
   onLogout: () => void
   collapsed: boolean
   onToggle: () => void
+  orgName?: string
+  orgPlan?: string
 }) {
   const pathname = usePathname()
   const [showMenu, setShowMenu] = useState(false)
@@ -348,14 +352,26 @@ export function DesktopSidebar({
       className="hidden md:flex flex-col shrink-0 bg-dark border-r border-dark-hover sticky top-0 h-dvh overflow-x-hidden"
     >
       {/* ── Logo ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center h-[60px] px-2 shrink-0">
-        <div className="w-[48px] h-full flex items-center justify-center shrink-0">
+      <div className="flex items-center min-h-[60px] px-2 py-2 shrink-0">
+        <div className="w-[48px] flex items-center justify-center shrink-0 self-center">
           <LogoMark />
         </div>
-        <div className={`overflow-hidden transition-opacity duration-200 whitespace-nowrap ${textOpacity}`}>
-          <span className="font-bold text-base text-dark-text tracking-tight ml-1">
-            Agency<span className="text-brand">OS</span>
-          </span>
+        <div className={`overflow-hidden transition-opacity duration-200 flex-1 min-w-0 ${textOpacity}`}>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-bold text-sm text-dark-text tracking-tight whitespace-nowrap ml-1">
+              Agency<span className="text-brand">OS</span>
+            </span>
+            {orgPlan && (
+              <span className="text-[0.48rem] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-brand/20 text-brand whitespace-nowrap">
+                {orgPlan}
+              </span>
+            )}
+          </div>
+          {orgName && (
+            <p className="text-[0.6rem] text-dark-ghost truncate ml-1 leading-tight mt-0.5">
+              {orgName}
+            </p>
+          )}
         </div>
       </div>
 

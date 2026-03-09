@@ -126,7 +126,7 @@ export default function NotificationsPage() {
   const filterTypes: (NotifType | 'all' | 'unread')[] = ['all', 'unread', 'task-assigned', 'task-overdue', 'approval-needed', 'client-note', 'plan-reminder', 'content-approved']
 
   return (
-    <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
 
       {/* Live toast */}
       {toast && (

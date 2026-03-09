@@ -212,7 +212,7 @@ export default function FinancePage() {
   }
 
   return (
-    <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)', position: 'relative' }}>
+    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)', position: 'relative' }}>
 
       {drawer && (
         <div onClick={() => setDrawer(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,26,20,0.5)', zIndex: 40, backdropFilter: 'blur(2px)' }} />

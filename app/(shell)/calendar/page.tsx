@@ -153,7 +153,7 @@ export default function CalendarPage() {
   }
 
   return (
-    <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)', overflow: 'hidden' }}>
+    <main className="page-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)', overflow: 'hidden' }}>
       <style>{`
         .no-scroll::-webkit-scrollbar{display:none}
         .no-scroll{-ms-overflow-style:none;scrollbar-width:none}

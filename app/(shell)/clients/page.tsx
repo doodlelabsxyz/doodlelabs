@@ -152,11 +152,11 @@ export default function ClientsPage() {
   const overdueInv   = invoices.filter(i => i.status === 'overdue').reduce((s, i) => s + Number(i.amount), 0)
 
   return (
-    <main style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+    <main className="page-main" style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div className={`clients-layout${selectedId ? ' has-detail' : ''}`} style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
         {/* ── Left: client list ─────────────────────────────────────────────── */}
-        <div style={{
+        <div className="clients-list-panel" style={{
           width: selectedId ? 280 : '100%', flexShrink: 0, overflowY: 'auto',
           display: 'flex', flexDirection: 'column',
           background: selectedId ? '#0F1A14' : 'hsl(42,30%,97%)',
@@ -384,7 +384,7 @@ function ClientDetail({
   const teamCount    = teamRows.length
 
   return (
-    <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', background: 'hsl(42,30%,97%)', display: 'flex', flexDirection: 'column' }}>
+    <div className="clients-detail-panel" style={{ flex: 1, minWidth: 0, overflowY: 'auto', background: 'hsl(42,30%,97%)', display: 'flex', flexDirection: 'column', paddingBottom: '100px' }}>
 
       <div style={{ background: '#fff', borderBottom: '1px solid hsl(38,14%,90%)', padding: '16px 20px 0', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>

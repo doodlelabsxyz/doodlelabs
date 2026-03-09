@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useOrg } from '@/lib/supabase/OrgContext'
 
 type NewClient = {
   name: string
@@ -33,6 +34,7 @@ export default function AddClientModal({ onClose, onCreated }: {
   onCreated: (client: { id: string; name: string }) => void
 }) {
   const supabase = createClient()
+  const { org } = useOrg()
 
   const [form, setForm] = useState<NewClient>({
     name: '', industry: '', contact_name: '', contact_email: '',
@@ -62,6 +64,7 @@ export default function AddClientModal({ onClose, onCreated }: {
     setError('')
 
     const { data, error: err } = await supabase.from('clients').insert({
+      org_id: org?.id,
       name: form.name.trim(),
       initials: initials(form.name),
       industry: form.industry.trim() || 'General',
@@ -87,7 +90,7 @@ export default function AddClientModal({ onClose, onCreated }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[60] flex items-center md:items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col">
 
         <div className="h-1.5 shrink-0" style={{ background: form.brand_color }} />

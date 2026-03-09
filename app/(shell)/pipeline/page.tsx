@@ -159,7 +159,7 @@ export default function PipelinePage() {
   if (!mounted) return null
 
   return (
-    <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <main className="page-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <div style={{ background: '#0F1A14', padding: '18px 20px 14px', flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
@@ -212,7 +212,7 @@ export default function PipelinePage() {
                 </span>
               </div>
 
-              <div style={{ flex: 1, overflowY: 'auto', padding: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '8px', paddingBottom: '100px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {colItems.map(cp => {
                   const cfg       = TYPE_CFG[cp.type]
                   const isOverdue = cp.status === 'overdue'

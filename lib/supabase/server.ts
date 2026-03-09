@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
 export async function createClient() {
@@ -26,27 +27,14 @@ export async function createClient() {
   )
 }
 
-// Service-role client for admin operations (bypasses RLS)
-// Only use in Route Handlers, never expose to browser
-export async function createAdminClient() {
-  const cookieStore = await cookies()
-
-  return createServerClient(
+// Service-role client for admin operations (bypasses RLS + has auth.admin.*)
+// Uses @supabase/supabase-js directly — the only client that exposes auth.admin
+// Only use in Route Handlers and Server Components, never expose to browser
+export function createAdminClient() {
+  return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {}
-        },
-      },
       auth: {
         autoRefreshToken: false,
         persistSession: false,

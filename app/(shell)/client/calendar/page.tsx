@@ -193,7 +193,7 @@ export default function ClientCalendarPage() {
   if (!mounted) return null
 
   return (
-    <main style={{ flex: 1, minWidth: 0, overflowY: view === 'week' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)' }}>
+    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: view === 'week' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)' }}>
 
       {/* Global styles */}
       <style>{`

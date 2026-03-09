@@ -1,15 +1,16 @@
 -- ================================================================
--- AgencyOS — Full Data Reset
--- Wipes all table data. Schema, RLS, triggers remain intact.
--- Run in Supabase SQL Editor when starting fresh.
+-- AgencyOS — Full Data Reset (Multi-Tenant Ready)
+-- Wipes ALL data. Schema, RLS, functions, triggers remain intact.
+-- Run in Supabase SQL Editor → then delete auth users from Dashboard.
 -- ================================================================
--- NOTE: After running this, also delete users manually:
---   Supabase Dashboard → Authentication → Users → select all → Delete
 
--- Truncate in reverse-dependency order (CASCADE handles FKs automatically)
+-- Disable triggers temporarily so truncate is clean
+SET session_replication_role = replica;
+
 TRUNCATE TABLE
   public.audit_log,
   public.notifications,
+  public.invites,
   public.client_team,
   public.client_users,
   public.assets,
@@ -22,12 +23,14 @@ TRUNCATE TABLE
   public.invoices,
   public.content_pieces,
   public.users,
-  public.clients
+  public.clients,
+  public.organizations
 CASCADE;
 
+-- Re-enable triggers
+SET session_replication_role = DEFAULT;
+
 -- ================================================================
--- OPTIONAL: Also wipe auth users via SQL (needs superuser access)
--- If the above doesn't work for auth.users, use the Dashboard UI instead:
---   Authentication → Users → select all → Delete
+-- After running this SQL:
+-- Supabase Dashboard → Authentication → Users → select all → Delete
 -- ================================================================
--- DELETE FROM auth.users;

@@ -117,7 +117,7 @@ export default function ApprovalPage() {
   const tc = cp ? (TYPE_CFG[cp.type as keyof typeof TYPE_CFG] ?? TYPE_CFG.graphic) : TYPE_CFG.graphic
 
   return (
-    <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)', position: 'relative' }}>
+    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)', position: 'relative' }}>
 
       {/* Success overlay */}
       {submitted && (

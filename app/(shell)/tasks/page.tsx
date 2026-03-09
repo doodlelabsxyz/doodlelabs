@@ -189,7 +189,7 @@ export default function TasksPage() {
   if (!mounted) return null
 
   return (
-    <main style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
 
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <div style={{

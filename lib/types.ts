@@ -168,6 +168,7 @@ export interface ContentScript {
 
 export interface Idea {
   id: string
+  org_id: string
   title: string
   type?: ContentType
   clientId?: string
@@ -182,6 +183,7 @@ export interface Idea {
 
 export interface FeedbackComment {
   id: string
+  org_id: string
   contentId: string
   authorId: string           // userId or 'client-[clientId]'
   authorName: string
@@ -196,6 +198,7 @@ export interface FeedbackComment {
 
 export interface Invoice {
   id: string
+  org_id: string
   clientId: string
   month: string              // e.g. "March 2026"
   amount: number
@@ -207,6 +210,7 @@ export interface Invoice {
 
 export interface SalaryRecord {
   id: string
+  org_id: string
   userId: string
   month: string
   amount: number
@@ -217,6 +221,7 @@ export interface SalaryRecord {
 
 export interface Expense {
   id: string
+  org_id: string
   category: ExpenseCategory
   description: string
   amount: number
@@ -228,6 +233,7 @@ export interface Expense {
 
 export interface User {
   id: string
+  org_id: string | null
   name: string
   role: Role
   tasksToday: number
@@ -241,6 +247,7 @@ export interface User {
 
 export interface Client {
   id: string
+  org_id: string
   name: string
   industry: string
   brandColor: string
@@ -258,6 +265,7 @@ export interface Client {
 
 export interface ContentPiece {
   id: string
+  org_id: string
   clientId: string
   title: string
   type: ContentType
@@ -274,6 +282,7 @@ export interface ContentPiece {
 
 export interface Task {
   id: string
+  org_id: string
   contentId: string
   clientId: string
   assignedTo: string
@@ -286,6 +295,7 @@ export interface Task {
 
 export interface Asset {
   id: string
+  org_id: string
   contentId: string
   clientId: string
   type: AssetType
@@ -297,6 +307,7 @@ export interface Asset {
 
 export interface Notification {
   id: string
+  org_id: string
   forRoles: Role[]
   type:
     | 'task-assigned'

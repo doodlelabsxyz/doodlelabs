@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { createClient } from '@/lib/supabase/client'
+import { useUser } from '@/lib/supabase/useUser'
 import type { ContentType, ContentStatus } from '@/lib/types'
 import { getInitials, getAvatarColor } from '@/lib/utils'
 
@@ -56,6 +57,7 @@ function formatDate(dateStr: string) {
 }
 
 export default function PipelinePage() {
+  const { user } = useUser()
   const router   = useRouter()
   const boardRef = useRef<HTMLDivElement>(null)
 
@@ -150,7 +152,7 @@ export default function PipelinePage() {
     setAssignPopup(null)
     const supabase = createClient()
     await supabase.from('client_team')
-      .upsert({ client_id: item.client_id, role, user_id: newUserId }, { onConflict: 'client_id,role' })
+      .upsert({ client_id: item.client_id, role, user_id: newUserId, org_id: user?.org_id }, { onConflict: 'client_id,role' })
   }, [clientTeamMap])
 
   const totalActive  = filtered.filter(c => c.status !== 'posted').length

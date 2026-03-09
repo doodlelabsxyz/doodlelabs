@@ -179,9 +179,11 @@ export default function BriefPage() {
 
   async function handleSave() {
     const supabase = createClient()
+    const orgId = user?.org_id
     const contentData = {
       client_id: clientId, title, type, platforms, caption, brief, notes,
       status, assigned_to: assignedTo, scheduled_date: schedDate,
+      org_id: orgId,
     }
     const scriptData = {
       graphic_copy:     script.graphicCopy    || null,
@@ -196,10 +198,11 @@ export default function BriefPage() {
     }
 
     if (isNew) {
-      const { data: newContent } = await supabase
+      const { data: newContent, error: insertError } = await supabase
         .from('content_pieces').insert(contentData).select('id').single()
+      if (insertError) { alert('Failed to save: ' + insertError.message); return }
       if (newContent) {
-        await supabase.from('content_scripts').insert({ content_id: newContent.id, ...scriptData })
+        await supabase.from('content_scripts').insert({ content_id: newContent.id, org_id: orgId, ...scriptData })
 
         // Auto-create tasks for every role assigned to this client
         const { data: team } = await supabase
@@ -222,6 +225,7 @@ export default function BriefPage() {
               role:        t.role,
               due_date:    schedDate || new Date().toISOString().split('T')[0],
               status:      'pending',
+              org_id:      orgId,
             }))
           )
         }
@@ -229,7 +233,7 @@ export default function BriefPage() {
     } else {
       await Promise.all([
         supabase.from('content_pieces').update(contentData).eq('id', id),
-        supabase.from('content_scripts').upsert({ content_id: id, ...scriptData }),
+        supabase.from('content_scripts').upsert({ content_id: id, org_id: user?.org_id, ...scriptData }),
       ])
     }
     setSaved(true)
@@ -241,7 +245,7 @@ export default function BriefPage() {
     const supabase = createClient()
     const { data } = await supabase
       .from('feedback_comments')
-      .insert({ content_id: id, author_id: user.id, author_name: user.name, author_type: 'team', text: newComment, resolved: false })
+      .insert({ content_id: id, author_id: user.id, author_name: user.name, author_type: 'team', text: newComment, resolved: false, org_id: user.org_id })
       .select('*')
       .single()
     if (data) {
@@ -259,7 +263,7 @@ export default function BriefPage() {
     const supabase = createClient()
     const { data } = await supabase
       .from('feedback_comments')
-      .insert({ content_id: id, author_id: user.id, author_name: user.name, author_type: 'team', text: replyText, resolved: false, parent_id: parentId })
+      .insert({ content_id: id, author_id: user.id, author_name: user.name, author_type: 'team', text: replyText, resolved: false, parent_id: parentId, org_id: user.org_id })
       .select('*')
       .single()
     if (data) {

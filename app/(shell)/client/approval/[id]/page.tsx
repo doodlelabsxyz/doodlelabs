@@ -5,6 +5,7 @@ import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useUser } from '@/lib/supabase/useUser'
 import { getInitials, getAvatarColor } from '@/lib/utils'
 
 gsap.registerPlugin(useGSAP)
@@ -37,6 +38,7 @@ export default function ApprovalPage() {
   const params = useParams()
   const id = params.id as string
   const supabase = createClient()
+  const { user } = useUser()
   const containerRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
 
@@ -92,7 +94,7 @@ export default function ApprovalPage() {
   async function handleSubmit() {
     if (!decision || submitting) return
     setSubmitting(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user: authUser } } = await supabase.auth.getUser()
 
     if (decision === 'approved') {
       await supabase.from('content_pieces').update({ status: 'approved' }).eq('id', id)
@@ -100,9 +102,10 @@ export default function ApprovalPage() {
       await Promise.all([
         supabase.from('feedback_comments').insert({
           content_piece_id: id,
-          author_id: user?.id,
+          author_id: authUser?.id,
           text: note,
           resolved: false,
+          org_id: user?.org_id,
         }),
         supabase.from('content_pieces').update({ status: 'in-design' }).eq('id', id),
       ])

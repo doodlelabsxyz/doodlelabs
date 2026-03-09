@@ -138,6 +138,7 @@ export default function ClientNotesPage() {
       text: replyText,
       parent_comment_id: id,
       resolved: false,
+      org_id: user?.org_id,
     })
     setReplyText('')
     setReplyId(null)

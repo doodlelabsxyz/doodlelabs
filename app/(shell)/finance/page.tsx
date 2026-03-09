@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { createClient } from '@/lib/supabase/client'
+import { useUser } from '@/lib/supabase/useUser'
 import type { InvoiceStatus, ExpenseCategory } from '@/lib/types'
 import { getInitials, getAvatarColor } from '@/lib/utils'
 
@@ -65,6 +66,7 @@ function expenseToMonth(dateStr: string) {
 }
 
 export default function FinancePage() {
+  const { user }  = useUser()
   const heroRef   = useRef<HTMLDivElement>(null)
   const drawerRef = useRef<HTMLDivElement>(null)
   const [mounted,   setMounted]   = useState(false)
@@ -167,7 +169,7 @@ export default function FinancePage() {
     const supabase = createClient()
     const { data } = await supabase
       .from('invoices')
-      .insert({ client_id: newInv.client_id, description: newInv.description, amount: parseInt(newInv.amount), status: newInv.status, month: newInv.month, due_date: newInv.due_date })
+      .insert({ client_id: newInv.client_id, description: newInv.description, amount: parseInt(newInv.amount), status: newInv.status, month: newInv.month, due_date: newInv.due_date, org_id: user?.org_id })
       .select('*, clients:client_id(id, name, brand_color, initials)')
       .single()
     if (data) setInvoices(prev => [data as InvoiceRow, ...prev])
@@ -180,7 +182,7 @@ export default function FinancePage() {
     const supabase = createClient()
     const { data } = await supabase
       .from('expenses')
-      .insert({ category: newExp.category, description: newExp.description, amount: parseInt(newExp.amount), date: newExp.date, paid_by: newExp.paid_by })
+      .insert({ category: newExp.category, description: newExp.description, amount: parseInt(newExp.amount), date: newExp.date, paid_by: newExp.paid_by, org_id: user?.org_id })
       .select('*, paid_by_user:paid_by(id, name)')
       .single()
     if (data) setExpenses(prev => [data as ExpenseRow, ...prev])
@@ -193,7 +195,7 @@ export default function FinancePage() {
     const supabase = createClient()
     const { data } = await supabase
       .from('salary_records')
-      .insert({ user_id: newSal.user_id, month: newSal.month, amount: parseInt(newSal.amount), paid: false, notes: newSal.notes || null })
+      .insert({ user_id: newSal.user_id, month: newSal.month, amount: parseInt(newSal.amount), paid: false, notes: newSal.notes || null, org_id: user?.org_id })
       .select('*, users:user_id(id, name, role)')
       .single()
     if (data) setSalaries(prev => [data as SalaryRow, ...prev])

@@ -119,6 +119,7 @@ export default function IdeasPage() {
         tags:      form.tags,
         status:    'raw',
         created_by: user.id,
+        org_id:    user.org_id,
       })
       .select('*, clients:client_id(id, name, brand_color), author:created_by(id, name)')
       .single()

@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { createClient } from '@/lib/supabase/client'
+import { useUser } from '@/lib/supabase/useUser'
 import CreateUserModal from '@/components/CreateUserModal'
 import AddClientModal from '@/components/AddClientModal'
 import { getInitials, getAvatarColor } from '@/lib/utils'
@@ -62,6 +63,7 @@ type ClientTeamRow = { id: string; client_id: string; role: string; user_id: str
 type UserSlim = { id: string; name: string; role: string }
 
 export default function ClientsPage() {
+  const { user } = useUser()
   const containerRef = useRef<HTMLDivElement>(null)
   const [mounted,       setMounted]       = useState(false)
   const [selectedId,    setSelectedId]    = useState<string | null>(null)
@@ -135,7 +137,7 @@ export default function ClientsPage() {
     const supabase = createClient()
     if (userId) {
       await supabase.from('client_team')
-        .upsert({ client_id: clientId, role, user_id: userId }, { onConflict: 'client_id,role' })
+        .upsert({ client_id: clientId, role, user_id: userId, org_id: user?.org_id }, { onConflict: 'client_id,role' })
       setTeamRows(prev => {
         const filtered = prev.filter(t => !(t.client_id === clientId && t.role === role))
         return [...filtered, { id: crypto.randomUUID(), client_id: clientId, role, user_id: userId }]

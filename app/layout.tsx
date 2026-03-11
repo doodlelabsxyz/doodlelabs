@@ -1,13 +1,9 @@
 import type { Metadata, Viewport } from 'next'
-import { Plus_Jakarta_Sans } from 'next/font/google'
+import { Plus_Jakarta_Sans, Public_Sans } from 'next/font/google'
 import './globals.css'
+import { cn } from "@/lib/utils";
 
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  variable: '--font-sans',
-  weight: ['400', '500', '600', '700', '800'],
-  display: 'swap',
-})
+const publicSans = Public_Sans({subsets:['latin'],variable:'--font-sans'})
 
 export const metadata: Metadata = {
   title: 'AgencyOS',
@@ -29,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={jakarta.variable}>
+    <html lang="en" className={cn("font-sans", publicSans.variable)}>
       <body>
         <div id="app-root">
           {children}

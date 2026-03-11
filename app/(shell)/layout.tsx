@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { DesktopSidebar, MobilePillNav } from '@/components/shell/PillNav'
+import { AppSidebar } from '@/components/shell/AppSidebar'
+import { MobilePillNav } from '@/components/shell/PillNav'
 import { NAV_BY_ROLE, type Role } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { getInitials, getAvatarColor } from '@/lib/utils'
 import { OrgProvider, useOrg } from '@/lib/supabase/OrgContext'
-
-const SIDEBAR_KEY = 'sidebar-collapsed'
+import { SidebarProvider } from '@/components/ui/sidebar'
 
 // Inner component — consumes OrgContext (must be a child of OrgProvider)
 function ShellContent({ children }: { children: React.ReactNode }) {
@@ -20,21 +20,6 @@ function ShellContent({ children }: { children: React.ReactNode }) {
   const [userColor, setUserColor] = useState('hsl(200,82%,58%)')
   const [notifCount, setNotifCount] = useState(0)
   const [mounted, setMounted] = useState(false)
-  const [collapsed, setCollapsed] = useState(false)
-
-  // Restore persisted sidebar state
-  useEffect(() => {
-    const saved = localStorage.getItem(SIDEBAR_KEY)
-    if (saved === 'true') setCollapsed(true)
-  }, [])
-
-  function handleToggle() {
-    setCollapsed(prev => {
-      const next = !prev
-      localStorage.setItem(SIDEBAR_KEY, String(next))
-      return next
-    })
-  }
 
   useEffect(() => {
     const supabase = createClient()
@@ -55,7 +40,6 @@ function ShellContent({ children }: { children: React.ReactNode }) {
         return
       }
 
-      // Fetch user profile from public.users
       const { data: profile } = await supabase
         .from('users')
         .select('name, role')
@@ -79,7 +63,6 @@ function ShellContent({ children }: { children: React.ReactNode }) {
 
     loadUser()
 
-    // Realtime: update badge whenever notifications change (INSERT = new, UPDATE = mark-read)
     const channel = supabase
       .channel('notif-badge')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
@@ -87,7 +70,6 @@ function ShellContent({ children }: { children: React.ReactNode }) {
       })
       .subscribe()
 
-    // Listen for auth changes (logout etc.)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') router.push('/login')
     })
@@ -101,7 +83,6 @@ function ShellContent({ children }: { children: React.ReactNode }) {
   async function handleLogout() {
     const supabase = createClient()
     await supabase.auth.signOut()
-    // onAuthStateChange listener will redirect to /login
   }
 
   const navItems = NAV_BY_ROLE[role] || NAV_BY_ROLE.admin
@@ -109,8 +90,8 @@ function ShellContent({ children }: { children: React.ReactNode }) {
   if (!mounted) return null
 
   return (
-    <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: 'hsl(42,38%,96%)' }}>
-      <DesktopSidebar
+    <SidebarProvider className="h-dvh overflow-hidden">
+      <AppSidebar
         items={navItems}
         userName={userName}
         userRole={role}
@@ -118,38 +99,19 @@ function ShellContent({ children }: { children: React.ReactNode }) {
         userColor={userColor}
         notifCount={notifCount}
         onLogout={handleLogout}
-        collapsed={collapsed}
-        onToggle={handleToggle}
         orgName={org?.name}
         orgPlan={org?.plan}
       />
-      {children}
-
-      {/* Mobile floating avatar → settings */}
-      {/* <Link
-        href="/settings"
-        className="md:hidden"
-        style={{
-          position: 'fixed', top: 14, right: 16, zIndex: 40,
-          width: 36, height: 36, borderRadius: '50%',
-          background: userColor,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '0.6rem', fontWeight: 800, color: '#fff',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
-          textDecoration: 'none',
-        }}
-      >
-        {userInitials}
-      </Link> */}
-
-      <div className="md:hidden">
-        <MobilePillNav items={navItems} />
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        {children}
+        <div className="md:hidden">
+          <MobilePillNav items={navItems} />
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   )
 }
 
-// Outer layout — provides OrgContext to the entire shell
 export default function ShellLayout({ children }: { children: React.ReactNode }) {
   return (
     <OrgProvider>

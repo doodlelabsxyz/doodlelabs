@@ -1,9 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { useRef } from 'react'
+import { useRef, useSyncExternalStore } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
+import { useTheme } from 'next-themes'
+
+import { Button } from '@/components/ui/button'
 
 gsap.registerPlugin(useGSAP)
 
@@ -33,24 +36,22 @@ function Bell({ count }: { count: number }) {
   return (
     <Link
       href="/notifications"
-      className="relative flex items-center justify-center"
-      style={{ width: '40px', height: '40px' }}
+      className="relative flex size-10 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted"
       aria-label={`Notifications${count > 0 ? `, ${count} unread` : ''}`}
     >
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
         <path
           d="M12 3a7 7 0 00-7 7v4l-1.5 2.5A1 1 0 004.5 18h15a1 1 0 00.86-1.5L19 14v-4a7 7 0 00-7-7z"
-          stroke="hsl(24, 18%, 12%)"
+          stroke="currentColor"
           strokeWidth="1.8"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        <path d="M10 19a2 2 0 004 0" stroke="hsl(24, 18%, 12%)" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M10 19a2 2 0 004 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
       </svg>
       {count > 0 && (
         <svg
-          className="absolute"
-          style={{ top: '4px', right: '4px' }}
+          className="absolute top-1 right-1"
           width="16"
           height="16"
           viewBox="0 0 16 16"
@@ -79,29 +80,59 @@ function Bell({ count }: { count: number }) {
 function ClientBadge({ clientName }: { clientName: string | null }) {
   return (
     <button
-      className="flex items-center font-medium"
-      style={{
-        gap: '6px',
-        padding: '7px 12px',
-        borderRadius: 'var(--radius-full)',
-        backgroundColor: 'hsl(42, 25%, 93%)',
-        border: '1px solid hsl(40, 18%, 88%)',
-        fontSize: 'var(--text-xs)',
-        color: 'var(--color-ink)',
-        transition: `background-color var(--dur-fast) var(--spring-snap)`,
-        cursor: 'pointer',
-      }}
-      onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'hsl(42, 22%, 90%)')}
-      onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'hsl(42, 25%, 93%)')}
+      className="flex items-center gap-1.5 rounded-full border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-        <path d="M3 6h18M3 12h18M3 18h18" stroke="hsl(24, 18%, 12%)" strokeWidth="2" strokeLinecap="round" />
+        <path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       </svg>
       {clientName ?? 'All Clients'}
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-        <path d="M6 9l6 6 6-6" stroke="hsl(24, 10%, 44%)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </button>
+  )
+}
+
+function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme()
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  )
+  const isDark = resolvedTheme === 'dark'
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+    >
+      {mounted && isDark ? (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M20.5 14.5A8.5 8.5 0 119.5 3.5 7 7 0 0020.5 14.5z"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ) : (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M12 2.5V5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M12 19v2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M21.5 12H19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M5 12H2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M18.72 5.28L17 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M7 17l-1.72 1.72" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M18.72 18.72L17 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M7 7L5.28 5.28" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      )}
+    </Button>
   )
 }
 
@@ -123,28 +154,15 @@ export function TopBar({
   showClientSwitcher = false,
 }: TopBarProps) {
   return (
-    <header
-      className="flex items-center justify-between w-full"
-      style={{
-        padding: 'var(--s3) var(--s3) 0',
-        background: 'white',
-        marginBottom: 'var(--s3)',
-      }}
-    >
+    <header className="mb-s3 flex w-full items-center justify-between bg-card px-s3 pt-s3">
       <div>
-        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-muted)', fontWeight: 500 }}>
-          {greeting}
-        </p>
-        <p
-          className="font-bold"
-          style={{ fontSize: 'var(--text-md)', color: 'var(--color-brand)', lineHeight: 1.2 }}
-        >
-          {userName}
-        </p>
+        <p className="text-xs font-medium text-muted-foreground">{greeting}</p>
+        <p className="text-md leading-tight font-bold text-primary">{userName}</p>
       </div>
 
-      <div className="flex items-center" style={{ gap: 'var(--s2)' }}>
+      <div className="flex items-center gap-s2">
         {showClientSwitcher && <ClientBadge clientName={activeClient} />}
+        <ThemeToggle />
         <Bell count={notifCount} />
       </div>
     </header>

@@ -7,6 +7,7 @@ import { useRef, useEffect, useState, useCallback } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import type { NavItem } from '@/lib/types'
+import { cn } from '@/lib/utils'
 
 gsap.registerPlugin(useGSAP)
 
@@ -127,6 +128,11 @@ function NavIcon({ name, active }: { name: NavItem['icon']; active: boolean }) {
         <path d="M9 12l2 2 4-4" stroke={col} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     ),
+    analytics: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <path d="M18 20V10M12 20V4M6 20v-6" stroke={col} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
   }
   return map[name] ?? null
 }
@@ -168,14 +174,18 @@ function MoreDrawer({ items, onClose }: { items: NavItem[]; onClose: () => void 
                 key={item.href}
                 href={item.href}
                 onClick={close}
-                className={`flex flex-col items-center gap-1.5 py-3.5 px-2 rounded-2xl no-underline transition-colors ${
+                className={cn(
+                  'flex flex-col items-center gap-1.5 rounded-2xl px-2 py-3.5 no-underline transition-colors',
                   isActive ? 'bg-brand' : 'bg-white/[0.04] active:bg-white/[0.08]'
-                }`}
+                )}
               >
                 <NavIcon name={item.icon} active={isActive} />
-                <span className={`text-[0.6rem] font-${isActive ? '700' : '500'} leading-none text-center ${
-                  isActive ? 'text-cream' : 'text-dark-muted'
-                }`}>
+                <span
+                  className={cn(
+                    'text-center text-[0.6rem] leading-none',
+                    isActive ? 'font-bold text-cream' : 'font-medium text-dark-muted'
+                  )}
+                >
                   {item.label}
                 </span>
               </Link>
@@ -248,7 +258,10 @@ export function MobilePillNav({ items }: { items: NavItem[] }) {
         <div className="relative flex items-center">
           <div
             ref={blobRef}
-            className={`absolute top-0 h-full rounded-full pointer-events-none ${isMoreActive ? '' : 'bg-brand'}`}
+            className={cn(
+              'pointer-events-none absolute top-0 h-full rounded-full',
+              !isMoreActive && 'bg-brand'
+            )}
           />
           {primaryItems.map((item, i) => {
             const isActive = item.href === pathname
@@ -260,7 +273,12 @@ export function MobilePillNav({ items }: { items: NavItem[] }) {
                 className="relative z-10 flex flex-col items-center justify-center gap-1 px-5 py-[10px] min-w-[68px]"
               >
                 <NavIcon name={item.icon} active={isActive} />
-                <span className={`text-[0.6rem] leading-none ${isActive ? 'font-bold text-cream' : 'font-medium text-dark-muted'}`}>
+                <span
+                  className={cn(
+                    'text-[0.6rem] leading-none',
+                    isActive ? 'font-bold text-cream' : 'font-medium text-dark-muted'
+                  )}
+                >
                   {item.label}
                 </span>
               </Link>
@@ -277,7 +295,12 @@ export function MobilePillNav({ items }: { items: NavItem[] }) {
                 <circle cx="12" cy="12" r="1.8" fill={isMoreActive ? 'var(--color-cream)' : 'var(--color-dark-muted)'}/>
                 <circle cx="19" cy="12" r="1.8" fill={isMoreActive ? 'var(--color-cream)' : 'var(--color-dark-muted)'}/>
               </svg>
-              <span className={`text-[0.6rem] leading-none ${isMoreActive ? 'font-bold text-cream' : 'font-medium text-dark-muted'}`}>
+              <span
+                className={cn(
+                  'text-[0.6rem] leading-none',
+                  isMoreActive ? 'font-bold text-cream' : 'font-medium text-dark-muted'
+                )}
+              >
                 More
               </span>
             </button>
@@ -517,5 +540,4 @@ export function DesktopSidebar({
     </aside>
   )
 }
-
 

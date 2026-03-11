@@ -103,7 +103,7 @@ export default function AcceptInvitePage() {
                 <span style={{ fontSize:'0.7rem', fontWeight:700, color:brand }}>{invite.orgName}</span>
               </div>
               <h2 style={{ fontSize:'1.2rem', fontWeight:800, color:'hsl(24,20%,11%)', lineHeight:1.2, letterSpacing:'-0.02em' }}>
-                You've been invited
+                You&apos;ve been invited
               </h2>
               <p style={{ fontSize:'0.78rem', color:'hsl(24,8%,52%)', marginTop:'6px' }}>
                 Joining as <strong style={{ color:'hsl(24,15%,20%)', textTransform:'capitalize' }}>{invite.role}</strong> · {invite.email}

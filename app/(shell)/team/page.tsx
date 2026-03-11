@@ -3,81 +3,129 @@
 import { useState, useRef, useEffect } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
+
+import CreateUserModal from '@/components/CreateUserModal'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Progress } from '@/components/ui/progress'
+import { UserAvatar } from '@/components/ui/user-avatar'
+import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import type { Role } from '@/lib/types'
-import CreateUserModal from '@/components/CreateUserModal'
-import { getInitials, getAvatarColor } from '@/lib/utils'
 
 gsap.registerPlugin(useGSAP)
 
 type PageTab = 'workload' | 'manage'
 
-const ROLE_CFG: Record<Role, { label: string; color: string; bg: string }> = {
-  admin:        { label: 'Admin',        color: 'hsl(200,88%,55%)', bg: 'hsl(200,88%,93%)' },
-  writer:       { label: 'Writer',       color: 'hsl(270,78%,62%)', bg: 'hsl(270,78%,93%)' },
-  designer:     { label: 'Designer',     color: 'hsl(14,72%,56%)',  bg: 'hsl(14,72%,94%)' },
-  videographer: { label: 'Videographer', color: 'hsl(40,92%,44%)',  bg: 'hsl(40,92%,93%)' },
-  editor:       { label: 'Editor',       color: 'hsl(161,58%,40%)', bg: 'hsl(161,58%,92%)' },
-  poster:       { label: 'Poster',       color: 'hsl(268,60%,58%)', bg: 'hsl(268,60%,93%)' },
-  client:       { label: 'Client',       color: 'hsl(24,10%,44%)',  bg: 'hsl(42,18%,90%)' },
+const ROLE_CFG: Record<Role, { label: string; colorClass: string; badgeClass: string }> = {
+  admin: { label: 'Admin', colorClass: 'text-sky', badgeClass: 'bg-sky/15 text-sky' },
+  writer: { label: 'Writer', colorClass: 'text-lavender', badgeClass: 'bg-lavender/15 text-lavender' },
+  designer: { label: 'Designer', colorClass: 'text-coral', badgeClass: 'bg-coral/15 text-coral' },
+  videographer: { label: 'Videographer', colorClass: 'text-amber-700', badgeClass: 'bg-lemon/20 text-amber-700' },
+  editor: { label: 'Editor', colorClass: 'text-mint', badgeClass: 'bg-mint/15 text-mint' },
+  poster: { label: 'Poster', colorClass: 'text-lavender', badgeClass: 'bg-lavender/15 text-lavender' },
+  client: { label: 'Client', colorClass: 'text-muted-foreground', badgeClass: 'bg-secondary text-muted-foreground' },
 }
 
 const ROLES: Role[] = ['admin', 'writer', 'designer', 'videographer', 'editor', 'poster', 'client']
 
 const ACCESS_BY_ROLE: Record<Role, string[]> = {
-  admin:        ['Dashboard', 'Calendar', 'Planning', 'Pipeline', 'Team', 'Clients', 'Finance', 'Analytics', 'Ideas', 'Alerts'],
-  writer:       ['Tasks', 'Calendar', 'Ideas', 'Brief', 'Alerts'],
-  designer:     ['Tasks', 'Calendar', 'Ideas', 'Brief', 'Alerts'],
+  admin: ['Dashboard', 'Calendar', 'Planning', 'Pipeline', 'Team', 'Clients', 'Finance', 'Analytics', 'Ideas', 'Alerts'],
+  writer: ['Tasks', 'Calendar', 'Ideas', 'Brief', 'Alerts'],
+  designer: ['Tasks', 'Calendar', 'Ideas', 'Brief', 'Alerts'],
   videographer: ['Tasks', 'Calendar', 'Ideas', 'Brief', 'Alerts'],
-  editor:       ['Tasks', 'Calendar', 'Ideas', 'Brief', 'Alerts'],
-  poster:       ['Tasks', 'Calendar', 'Brief', 'Alerts'],
-  client:       ['Client Portal', 'Client Calendar', 'Client Notes', 'Alerts'],
+  editor: ['Tasks', 'Calendar', 'Ideas', 'Brief', 'Alerts'],
+  poster: ['Tasks', 'Calendar', 'Brief', 'Alerts'],
+  client: ['Client Portal', 'Client Calendar', 'Client Notes', 'Alerts'],
 }
 
 type EmployeeRow = {
-  id: string; name: string; role: Role
-  tasks_today: number; tasks_total: number; salary: number | null
-  email: string | null; phone: string | null; joined_at: string | null; active: boolean
+  id: string
+  name: string
+  role: Role
+  tasks_today: number
+  tasks_total: number
+  salary: number | null
+  email: string | null
+  phone: string | null
+  joined_at: string | null
+  active: boolean
 }
-type TaskRow    = { id: string; assigned_to: string; status: string; client_id: string }
+
+type TaskRow = { id: string; assigned_to: string; status: string; client_id: string }
 type ContentRow = { id: string; title: string; status: string; assigned_to: string[]; client_id: string }
-type ClientRow  = { id: string; name: string; brand_color: string }
+type ClientRow = { id: string; name: string; brand_color: string }
+
+function FPill({
+  label,
+  active,
+  onClick,
+  colorClass,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+  colorClass?: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap transition-colors',
+        active ? colorClass || 'bg-coral text-white' : 'bg-white/7 text-dark-muted hover:bg-white/10 hover:text-dark-text'
+      )}
+    >
+      {label}
+    </button>
+  )
+}
 
 export default function TeamPage() {
-  const gridRef  = useRef<HTMLDivElement>(null)
-  const [mounted,    setMounted]    = useState(false)
-  const [pageTab,    setPageTab]    = useState<PageTab>('workload')
+  const gridRef = useRef<HTMLDivElement>(null)
+  const [mounted, setMounted] = useState(false)
+  const [pageTab, setPageTab] = useState<PageTab>('workload')
   const [roleFilter, setRoleFilter] = useState<Role | 'all'>('all')
-  const [employees,  setEmployees]  = useState<EmployeeRow[]>([])
-  const [tasks,      setTasks]      = useState<TaskRow[]>([])
-  const [content,    setContent]    = useState<ContentRow[]>([])
-  const [clients,    setClients]    = useState<ClientRow[]>([])
-  const [expandedId,     setExpandedId]     = useState<string | null>(null)
-  const [editingRole,    setEditingRole]    = useState<Role | null>(null)
-  const [editingSalary,  setEditingSalary]  = useState('')
-  const [showAddMember,  setShowAddMember]  = useState(false)
+  const [employees, setEmployees] = useState<EmployeeRow[]>([])
+  const [tasks, setTasks] = useState<TaskRow[]>([])
+  const [content, setContent] = useState<ContentRow[]>([])
+  const [clients, setClients] = useState<ClientRow[]>([])
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [editingRole, setEditingRole] = useState<Role | null>(null)
+  const [editingSalary, setEditingSalary] = useState('')
+  const [showAddMember, setShowAddMember] = useState(false)
 
   useEffect(() => {
     async function load() {
       const supabase = createClient()
       const [usrRes, tskRes, cntRes, cliRes] = await Promise.all([
-        supabase.from('users').select('id, name, role, tasks_today, tasks_total, salary, email, phone, joined_at, active').neq('role', 'client').order('name'),
+        supabase
+          .from('users')
+          .select('id, name, role, tasks_today, tasks_total, salary, email, phone, joined_at, active')
+          .neq('role', 'client')
+          .order('name'),
         supabase.from('tasks').select('id, assigned_to, status, client_id'),
-        supabase.from('content_pieces').select('id, title, status, assigned_to, client_id').order('created_at', { ascending: false }),
+        supabase
+          .from('content_pieces')
+          .select('id, title, status, assigned_to, client_id')
+          .order('created_at', { ascending: false }),
         supabase.from('clients').select('id, name, brand_color'),
       ])
       setEmployees((usrRes.data || []) as EmployeeRow[])
       setTasks((tskRes.data || []) as TaskRow[])
       setContent((cntRes.data || []) as ContentRow[])
-      setClients(cliRes.data || [])
+      setClients((cliRes.data || []) as ClientRow[])
       setMounted(true)
     }
-    load()
+
+    void load()
   }, [])
 
   useGSAP(() => {
     if (!mounted || !gridRef.current) return
-    gsap.fromTo('.team-item',
+    gsap.fromTo(
+      '[data-animate="team-item"]',
       { y: 14, opacity: 0 },
       { y: 0, opacity: 1, duration: 0.35, stagger: 0.05, ease: 'back.out(1.2)', clearProps: 'all' }
     )
@@ -86,11 +134,13 @@ export default function TeamPage() {
   if (!mounted) return null
 
   const filteredUsers = employees.filter(u => roleFilter === 'all' || u.role === roleFilter)
-  const totalPayroll  = employees.filter(u => u.active !== false && u.salary && Number(u.salary) > 0).reduce((s, u) => s + Number(u.salary), 0)
+  const totalPayroll = employees
+    .filter(u => u.active !== false && u.salary && Number(u.salary) > 0)
+    .reduce((s, u) => s + Number(u.salary), 0)
 
   async function saveRole(userId: string) {
     if (!editingRole) return
-    setEmployees(prev => prev.map(u => u.id === userId ? { ...u, role: editingRole } : u))
+    setEmployees(prev => prev.map(u => (u.id === userId ? { ...u, role: editingRole } : u)))
     setEditingRole(null)
     const supabase = createClient()
     await supabase.from('users').update({ role: editingRole }).eq('id', userId)
@@ -99,7 +149,7 @@ export default function TeamPage() {
   async function saveSalary(userId: string) {
     const amt = parseInt(editingSalary)
     if (isNaN(amt)) return
-    setEmployees(prev => prev.map(u => u.id === userId ? { ...u, salary: amt } : u))
+    setEmployees(prev => prev.map(u => (u.id === userId ? { ...u, salary: amt } : u)))
     setEditingSalary('')
     const supabase = createClient()
     await supabase.from('users').update({ salary: amt }).eq('id', userId)
@@ -109,295 +159,380 @@ export default function TeamPage() {
     const target = employees.find(u => u.id === userId)
     if (!target) return
     const newActive = !target.active
-    setEmployees(prev => prev.map(u => u.id === userId ? { ...u, active: newActive } : u))
+    setEmployees(prev => prev.map(u => (u.id === userId ? { ...u, active: newActive } : u)))
     const supabase = createClient()
     await supabase.from('users').update({ active: newActive }).eq('id', userId)
   }
 
   return (
-    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-
-      {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <div style={{ background: '#0F1A14', padding: '18px 20px 0', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: '0.6rem', color: 'hsl(140,7%,48%)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '1px' }}>Agency</p>
-            <h1 style={{ fontSize: '1.167rem', fontWeight: 800, color: 'hsl(42,22%,84%)', lineHeight: 1 }}>Team</h1>
+    <main className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto">
+      <section className="bg-dark px-5 pt-[18px] pb-0">
+        <div className="mb-3 flex items-center gap-3">
+          <div className="flex-1">
+            <p className="mb-px text-[0.6rem] uppercase tracking-[0.08em] text-dark-muted">Agency</p>
+            <h1 className="text-md font-extrabold leading-none text-dark-text">Team</h1>
           </div>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <button
+          <div className="flex items-center gap-3">
+            <Button
               onClick={() => setShowAddMember(true)}
-              style={{ padding: '8px 14px', borderRadius: '10px', border: 'none', cursor: 'pointer', background: 'hsl(200,88%,55%)', color: '#fff', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}
+              className="bg-sky text-white hover:bg-sky/85"
             >
-              + Add Member
-            </button>
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: '1rem', fontWeight: 800, color: 'hsl(25,82%,60%)', lineHeight: 1 }}>{employees.filter(u => u.active !== false).length}</p>
-              <p style={{ fontSize: '0.56rem', color: 'hsl(140,7%,44%)', marginTop: '2px' }}>active</p>
+              Add Member
+            </Button>
+            <div className="text-right">
+              <p className="text-base leading-none font-extrabold text-coral">
+                {employees.filter(u => u.active !== false).length}
+              </p>
+              <p className="mt-0.5 text-[0.56rem] text-dark-muted">active</p>
             </div>
             {totalPayroll > 0 && (
               <>
-                <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.07)' }} />
-                <div style={{ textAlign: 'right' }}>
-                  <p style={{ fontSize: '0.9rem', fontWeight: 800, color: 'hsl(154,55%,52%)', lineHeight: 1 }}>${totalPayroll.toLocaleString()}</p>
-                  <p style={{ fontSize: '0.56rem', color: 'hsl(140,7%,44%)', marginTop: '2px' }}>payroll/mo</p>
+                <div className="h-6 w-px bg-white/7" />
+                <div className="text-right">
+                  <p className="text-sm leading-none font-extrabold text-success">
+                    ${totalPayroll.toLocaleString()}
+                  </p>
+                  <p className="mt-0.5 text-[0.56rem] text-dark-muted">payroll/mo</p>
                 </div>
               </>
             )}
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '0', marginBottom: '10px' }}>
+        <div className="mb-2.5 flex gap-1.5 overflow-x-auto">
           <FPill label="Everyone" active={roleFilter === 'all'} onClick={() => setRoleFilter('all')} />
-          {(['writer','designer','videographer','editor','poster'] as Role[]).map(r => (
-            <FPill key={r} label={ROLE_CFG[r].label} active={roleFilter === r} color={ROLE_CFG[r].color} onClick={() => setRoleFilter(roleFilter === r ? 'all' : r)} />
+          {(['writer', 'designer', 'videographer', 'editor', 'poster'] as Role[]).map(r => (
+            <FPill
+              key={r}
+              label={ROLE_CFG[r].label}
+              active={roleFilter === r}
+              colorClass={ROLE_CFG[r].badgeClass}
+              onClick={() => setRoleFilter(roleFilter === r ? 'all' : r)}
+            />
           ))}
         </div>
 
-        <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          {([['workload', 'Workload'], ['manage', 'Manage']] as const).map(([key, label]) => (
-            <button key={key} onClick={() => setPageTab(key)} style={{
-              padding: '9px 18px', border: 'none', background: 'transparent', cursor: 'pointer',
-              fontSize: '0.75rem', fontWeight: pageTab === key ? 700 : 500,
-              color: pageTab === key ? 'hsl(25,82%,62%)' : 'hsl(140,7%,44%)',
-              borderBottom: pageTab === key ? '2px solid hsl(25,82%,62%)' : '2px solid transparent',
-              transition: 'all 0.15s', marginBottom: '-1px',
-            }}>
+        <div className="flex border-b border-white/6">
+          {([
+            ['workload', 'Workload'],
+            ['manage', 'Manage'],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setPageTab(key)}
+              className={cn(
+                'border-b-2 px-[18px] py-[9px] text-xs transition-colors',
+                pageTab === key
+                  ? 'border-coral text-coral font-bold'
+                  : 'border-transparent text-dark-muted font-medium hover:text-dark-text'
+              )}
+            >
               {label}
             </button>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* ── WORKLOAD tab ──────────────────────────────────────────────────── */}
       {pageTab === 'workload' && (
-        <div ref={gridRef} style={{ padding: '16px', flex: 1 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+        <div ref={gridRef} className="flex-1 p-4">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
             {filteredUsers.map(user => {
-              const userTasks    = tasks.filter(t => t.assigned_to === user.id)
-              const doneTasks    = userTasks.filter(t => t.status === 'done').length
-              const activeTasks  = userTasks.filter(t => t.status === 'in-progress').length
+              const userTasks = tasks.filter(t => t.assigned_to === user.id)
+              const doneTasks = userTasks.filter(t => t.status === 'done').length
+              const activeTasks = userTasks.filter(t => t.status === 'in-progress').length
               const overdueTasks = userTasks.filter(t => t.status === 'overdue').length
               const pendingTasks = userTasks.filter(t => t.status === 'pending').length
-              const totalUser    = userTasks.length
-              const pct  = user.tasks_total > 0 ? Math.round((user.tasks_today / user.tasks_total) * 100) : 0
+              const totalUser = userTasks.length
+              const pct = user.tasks_total > 0 ? Math.round((user.tasks_today / user.tasks_total) * 100) : 0
               const load = pct >= 80 ? 'heavy' : pct >= 50 ? 'medium' : 'light'
               const loadCfg = {
-                heavy:  { label: 'Heavy',  bg: 'hsl(4,78%,93%)',   text: 'hsl(4,72%,45%)',   bar: 'hsl(4,75%,56%)' },
-                medium: { label: 'Medium', bg: 'hsl(35,90%,92%)',  text: 'hsl(35,65%,35%)',  bar: 'hsl(35,92%,52%)' },
-                light:  { label: 'Light',  bg: 'hsl(154,45%,90%)', text: 'hsl(154,45%,28%)', bar: 'hsl(154,50%,40%)' },
+                heavy: {
+                  label: 'Heavy',
+                  badgeClass: 'bg-danger/15 text-danger',
+                  progressClass: '[&_[data-slot=progress-indicator]]:bg-danger',
+                },
+                medium: {
+                  label: 'Medium',
+                  badgeClass: 'bg-warning/15 text-warning',
+                  progressClass: '[&_[data-slot=progress-indicator]]:bg-warning',
+                },
+                light: {
+                  label: 'Light',
+                  badgeClass: 'bg-success/15 text-success',
+                  progressClass: '[&_[data-slot=progress-indicator]]:bg-success',
+                },
               }[load]
 
-              const clientIds   = [...new Set(userTasks.map(t => t.client_id))]
-              const userClients = clientIds.map(id => clients.find(c => c.id === id)).filter(Boolean) as ClientRow[]
+              const clientIds = [...new Set(userTasks.map(t => t.client_id))]
+              const userClients = clientIds
+                .map(id => clients.find(c => c.id === id))
+                .filter(Boolean) as ClientRow[]
               const userContent = content.filter(c => c.assigned_to.includes(user.id)).slice(0, 2)
 
               return (
-                <div
+                <Card
                   key={user.id}
-                  className="team-item"
-                  style={{
-                    background: 'hsl(42,25%,99%)', borderRadius: '16px',
-                    border: '1px solid hsl(38,14%,90%)', overflow: 'hidden',
-                    opacity: user.active === false ? 0.5 : 1,
-                    transition: 'transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.15s ease',
-                  }}
-                  onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = 'translateY(-3px)'; el.style.boxShadow = `0 12px 32px ${getAvatarColor(user.id)}18` }}
-                  onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = ''; el.style.boxShadow = '' }}
+                  className={cn(
+                    'team-item gap-0 overflow-hidden border border-border py-0 shadow-none transition-all hover:-translate-y-1 hover:shadow-md',
+                    user.active === false && 'opacity-50'
+                  )}
+                  data-animate="team-item"
                 >
-                  <div style={{ height: 4, background: getAvatarColor(user.id) }} />
-                  <div style={{ padding: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-                      <div style={{ width: 48, height: 48, borderRadius: '14px', background: getAvatarColor(user.id), display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '16px', color: '#fff', flexShrink: 0 }}>
-                        {getInitials(user.name)}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: '0.95rem', fontWeight: 800, color: 'hsl(24,20%,11%)', lineHeight: 1.2 }}>{user.name}</p>
-                        <span style={{ display: 'inline-block', marginTop: '3px', padding: '2px 8px', borderRadius: '99px', background: `${ROLE_CFG[user.role].color}20`, color: ROLE_CFG[user.role].color, fontSize: '0.656rem', fontWeight: 700 }}>
+                  <div className="h-1 bg-primary" />
+                  <CardContent className="py-4">
+                    <div className="mb-3.5 flex items-center gap-3">
+                      <UserAvatar userId={user.id} name={user.name} size="lg" className="rounded-[14px]" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[0.95rem] leading-5 font-extrabold text-foreground">{user.name}</p>
+                        <Badge className={cn('mt-1 border-0 text-[0.656rem] font-bold', ROLE_CFG[user.role].badgeClass)}>
                           {ROLE_CFG[user.role].label}
+                        </Badge>
+                      </div>
+                      <Badge className={cn('border-0 text-[0.6rem] font-bold', loadCfg.badgeClass)}>
+                        {loadCfg.label}
+                      </Badge>
+                    </div>
+
+                    <div className="mb-3">
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-2xs text-muted-foreground">Workload</span>
+                        <span className="text-2xs font-bold text-foreground">
+                          {user.tasks_today}/{user.tasks_total} today
                         </span>
                       </div>
-                      <span style={{ padding: '4px 9px', borderRadius: '99px', background: loadCfg.bg, color: loadCfg.text, fontSize: '0.6rem', fontWeight: 700, flexShrink: 0 }}>
-                        {loadCfg.label}
-                      </span>
+                      <Progress
+                        value={Math.min(pct, 100)}
+                        className={cn('gap-0', loadCfg.progressClass)}
+                      />
                     </div>
 
-                    <div style={{ marginBottom: '12px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '0.656rem', color: 'hsl(24,10%,54%)' }}>Workload</span>
-                        <span style={{ fontSize: '0.656rem', fontWeight: 700, color: 'hsl(24,20%,11%)' }}>{user.tasks_today}/{user.tasks_total} today</span>
-                      </div>
-                      <div style={{ height: 6, borderRadius: '99px', background: 'hsl(42,18%,93%)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${Math.min(pct,100)}%`, borderRadius: '99px', background: loadCfg.bar, transition: 'width 0.8s cubic-bezier(0.34,1.56,0.64,1)' }} />
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                    <div className="mb-3 flex flex-wrap gap-1.5">
                       {[
-                        { n: activeTasks,  label: 'Active',  color: 'hsl(200,82%,58%)' },
-                        { n: pendingTasks, label: 'To Do',   color: 'hsl(40,95%,55%)' },
-                        { n: overdueTasks, label: 'Overdue', color: 'hsl(4,75%,56%)' },
-                        { n: doneTasks,    label: 'Done',    color: 'hsl(154,50%,40%)' },
-                      ].filter(x => x.n > 0).map(x => (
-                        <div key={x.label} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', background: `${x.color}14` }}>
-                          <div style={{ width: 5, height: 5, borderRadius: '50%', background: x.color }} />
-                          <span style={{ fontSize: '0.6rem', fontWeight: 700, color: x.color }}>{x.n}</span>
-                          <span style={{ fontSize: '0.6rem', color: 'hsl(24,10%,54%)' }}>{x.label}</span>
-                        </div>
-                      ))}
-                      {totalUser === 0 && <span style={{ fontSize: '0.656rem', color: 'hsl(24,8%,64%)' }}>No tasks assigned</span>}
+                        { n: activeTasks, label: 'Active', badgeClass: 'bg-sky/15 text-sky' },
+                        { n: pendingTasks, label: 'To Do', badgeClass: 'bg-lemon/20 text-amber-700' },
+                        { n: overdueTasks, label: 'Overdue', badgeClass: 'bg-danger/15 text-danger' },
+                        { n: doneTasks, label: 'Done', badgeClass: 'bg-success/15 text-success' },
+                      ]
+                        .filter(x => x.n > 0)
+                        .map(x => (
+                          <Badge key={x.label} className={cn('border-0 text-[0.6rem] font-bold', x.badgeClass)}>
+                            {x.n} {x.label}
+                          </Badge>
+                        ))}
+                      {totalUser === 0 && <span className="text-2xs text-ghost">No tasks assigned</span>}
                     </div>
 
                     {userClients.length > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-                        <span style={{ fontSize: '0.6rem', color: 'hsl(24,8%,64%)' }}>Clients:</span>
+                      <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[0.6rem] text-ghost">Clients:</span>
                         {userClients.map(c => (
-                          <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 7px', borderRadius: '99px', background: 'hsl(42,18%,93%)' }}>
-                            <div style={{ width: 5, height: 5, borderRadius: '50%', background: c.brand_color }} />
-                            <span style={{ fontSize: '0.58rem', fontWeight: 600, color: 'hsl(24,10%,44%)' }}>{c.name}</span>
+                          <div
+                            key={c.id}
+                            style={{ '--client-color': c.brand_color } as React.CSSProperties}
+                            className="flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5"
+                          >
+                            <div className="size-1.5 rounded-full bg-[var(--client-color)]" />
+                            <span className="text-[0.58rem] font-semibold text-muted-foreground">{c.name}</span>
                           </div>
                         ))}
                       </div>
                     )}
 
                     {userContent.length > 0 && (
-                      <div style={{ borderTop: '1px solid hsl(38,14%,92%)', paddingTop: '10px' }}>
-                        <p style={{ fontSize: '0.6rem', fontWeight: 700, color: 'hsl(24,8%,64%)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Recent Work</p>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div className="border-t border-border pt-2.5">
+                        <p className="mb-1.5 text-[0.6rem] font-bold uppercase tracking-[0.04em] text-ghost">
+                          Recent Work
+                        </p>
+                        <div className="flex flex-col gap-1">
                           {userContent.map(cp => {
                             const client = clients.find(c => c.id === cp.client_id)
                             return (
-                              <div key={cp.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <div style={{ width: 6, height: 6, borderRadius: '2px', background: client?.brand_color || '#ccc', flexShrink: 0 }} />
-                                <span style={{ fontSize: '0.7rem', color: 'hsl(24,10%,44%)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{cp.title}</span>
-                                <span style={{ fontSize: '0.58rem', color: 'hsl(24,8%,64%)', flexShrink: 0, textTransform: 'capitalize' }}>{cp.status.replace(/-/g,' ')}</span>
+                              <div key={cp.id} className="flex items-center gap-1.5">
+                                <div
+                                  style={{ '--client-color': client?.brand_color || '#ccc' } as React.CSSProperties}
+                                  className="size-1.5 shrink-0 rounded-[2px] bg-[var(--client-color)]"
+                                />
+                                <span className="flex-1 truncate text-xs text-muted-foreground">{cp.title}</span>
+                                <span className="shrink-0 text-[0.58rem] capitalize text-ghost">
+                                  {cp.status.replace(/-/g, ' ')}
+                                </span>
                               </div>
                             )
                           })}
                         </div>
                       </div>
                     )}
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               )
             })}
           </div>
         </div>
       )}
 
-      {/* ── MANAGE tab ────────────────────────────────────────────────────── */}
       {pageTab === 'manage' && (
-        <div ref={gridRef} style={{ padding: '16px', flex: 1 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div ref={gridRef} className="flex-1 p-4">
+          <div className="flex flex-col gap-2">
             {filteredUsers.map(user => {
-              const rc         = ROLE_CFG[user.role]
-              const userTasks  = tasks.filter(t => t.assigned_to === user.id)
+              const rc = ROLE_CFG[user.role]
+              const userTasks = tasks.filter(t => t.assigned_to === user.id)
               const isExpanded = expandedId === user.id
               const isInactive = user.active === false
 
               return (
-                <div key={user.id} className="team-item" style={{
-                  background: '#fff', borderRadius: '14px',
-                  border: isExpanded ? '1.5px solid hsl(25,82%,72%)' : '1px solid hsl(38,14%,90%)',
-                  overflow: 'hidden', opacity: isInactive ? 0.55 : 1,
-                }}>
-                  <div onClick={() => setExpandedId(isExpanded ? null : user.id)} style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
-                    <div style={{ width: 42, height: 42, borderRadius: '12px', background: getAvatarColor(user.id), display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '13px', color: '#fff', flexShrink: 0 }}>
-                      {getInitials(user.name)}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <p style={{ fontSize: '0.85rem', fontWeight: 800, color: 'hsl(24,20%,11%)' }}>{user.name}</p>
-                        {isInactive && <span style={{ fontSize: '0.56rem', color: 'hsl(4,72%,50%)', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', background: 'hsl(4,72%,94%)' }}>Inactive</span>}
+                <Card
+                  key={user.id}
+                  className={cn(
+                    'team-item gap-0 overflow-hidden py-0 shadow-none',
+                    isExpanded ? 'border-coral/60' : 'border-border',
+                    isInactive && 'opacity-55'
+                  )}
+                  data-animate="team-item"
+                >
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : user.id)}
+                    className="flex items-center gap-3 px-4 py-3 text-left"
+                  >
+                    <UserAvatar userId={user.id} name={user.name} className="rounded-xl" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-extrabold text-foreground">{user.name}</p>
+                        {isInactive && (
+                          <Badge className="border-0 bg-danger/10 text-[0.56rem] font-bold text-danger">
+                            Inactive
+                          </Badge>
+                        )}
                       </div>
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '3px' }}>
-                        <span style={{ padding: '1px 7px', borderRadius: '99px', background: rc.bg, color: rc.color, fontSize: '0.58rem', fontWeight: 700 }}>{rc.label}</span>
-                        <span style={{ fontSize: '0.6rem', color: 'hsl(24,10%,54%)' }}>{userTasks.filter(t => t.status === 'in-progress').length} active tasks</span>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <Badge className={cn('border-0 text-[0.58rem] font-bold', rc.badgeClass)}>
+                          {rc.label}
+                        </Badge>
+                        <span className="text-[0.6rem] text-muted-foreground">
+                          {userTasks.filter(t => t.status === 'in-progress').length} active tasks
+                        </span>
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div className="shrink-0 text-right">
                       {user.salary && Number(user.salary) > 0 ? (
-                        <p style={{ fontSize: '0.82rem', fontWeight: 800, color: 'hsl(154,50%,36%)' }}>${Number(user.salary).toLocaleString()}<span style={{ fontWeight: 400, fontSize: '0.58rem', color: 'hsl(24,10%,52%)' }}>/mo</span></p>
+                        <p className="text-sm font-extrabold text-success">
+                          ${Number(user.salary).toLocaleString()}
+                          <span className="text-[0.58rem] font-normal text-muted-foreground">/mo</span>
+                        </p>
                       ) : (
-                        <p style={{ fontSize: '0.72rem', color: 'hsl(24,10%,56%)' }}>Owner</p>
+                        <p className="text-xs text-muted-foreground">Owner</p>
                       )}
-                      <span style={{ fontSize: '0.68rem', color: 'hsl(24,10%,56%)' }}>{isExpanded ? '▲' : '▼'}</span>
+                      <span className="text-xs text-muted-foreground">{isExpanded ? '▲' : '▼'}</span>
                     </div>
-                  </div>
+                  </button>
 
                   {isExpanded && (
-                    <div onClick={e => e.stopPropagation()} style={{ borderTop: '1px solid hsl(38,14%,92%)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '14px', background: 'hsl(42,28%,98%)' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '6px' }}>
+                    <div
+                      onClick={e => e.stopPropagation()}
+                      className="flex flex-col gap-3 border-t border-border bg-background px-4 py-4"
+                    >
+                      <div className="grid grid-cols-3 gap-1.5">
                         {[
-                          { label: 'Email',  val: user.email || '—' },
-                          { label: 'Phone',  val: user.phone || '—' },
-                          { label: 'Joined', val: user.joined_at ? new Date(user.joined_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—' },
+                          { label: 'Email', val: user.email || '—' },
+                          { label: 'Phone', val: user.phone || '—' },
+                          {
+                            label: 'Joined',
+                            val: user.joined_at
+                              ? new Date(user.joined_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                              : '—',
+                          },
                         ].map(f => (
-                          <div key={f.label} style={{ background: '#fff', borderRadius: '8px', padding: '6px 10px', border: '1px solid hsl(38,14%,90%)' }}>
-                            <p style={{ fontSize: '0.56rem', color: 'hsl(24,10%,52%)' }}>{f.label}</p>
-                            <p style={{ fontSize: '0.66rem', fontWeight: 600, color: 'hsl(24,15%,22%)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.val}</p>
+                          <div key={f.label} className="rounded-lg border border-border bg-card px-2.5 py-1.5">
+                            <p className="text-[0.56rem] text-muted-foreground">{f.label}</p>
+                            <p className="truncate text-[0.66rem] font-semibold text-foreground">{f.val}</p>
                           </div>
                         ))}
                       </div>
 
                       <div>
-                        <p style={{ fontSize: '0.6rem', fontWeight: 700, color: 'hsl(24,8%,48%)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '7px' }}>Role</p>
-                        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                        <p className="mb-1.5 text-[0.6rem] font-bold uppercase tracking-[0.06em] text-ghost">
+                          Role
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
                           {ROLES.map(r => (
-                            <button key={r} onClick={() => setEditingRole(editingRole === r ? null : r)} style={{
-                              padding: '3px 10px', borderRadius: '99px', border: '1.5px solid',
-                              borderColor: (editingRole || user.role) === r ? ROLE_CFG[r].color : 'hsl(38,14%,86%)',
-                              background: (editingRole || user.role) === r ? ROLE_CFG[r].bg : '#fff',
-                              color: (editingRole || user.role) === r ? ROLE_CFG[r].color : 'hsl(24,10%,44%)',
-                              fontSize: '0.62rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.1s',
-                            }}>
+                            <button
+                              key={r}
+                              onClick={() => setEditingRole(editingRole === r ? null : r)}
+                              className={cn(
+                                'rounded-full border px-3 py-1 text-[0.62rem] font-bold transition-colors',
+                                (editingRole || user.role) === r
+                                  ? `${ROLE_CFG[r].badgeClass} border-transparent`
+                                  : 'border-border bg-card text-muted-foreground hover:bg-secondary'
+                              )}
+                            >
                               {ROLE_CFG[r].label}
                             </button>
                           ))}
                         </div>
                         {editingRole && editingRole !== user.role && (
-                          <button onClick={() => saveRole(user.id)} style={{ marginTop: '6px', padding: '5px 12px', borderRadius: '8px', border: 'none', background: ROLE_CFG[editingRole].color, color: '#fff', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}>
+                          <Button
+                            size="xs"
+                            onClick={() => saveRole(user.id)}
+                            className="mt-1.5 bg-primary text-white"
+                          >
                             Save → {ROLE_CFG[editingRole].label}
-                          </button>
+                          </Button>
                         )}
                       </div>
 
                       <div>
-                        <p style={{ fontSize: '0.6rem', fontWeight: 700, color: 'hsl(24,8%,48%)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '7px' }}>Monthly Salary</p>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <input
-                            placeholder={user.salary ? `$${Number(user.salary).toLocaleString()}` : 'Enter amount…'}
+                        <p className="mb-1.5 text-[0.6rem] font-bold uppercase tracking-[0.06em] text-ghost">
+                          Monthly Salary
+                        </p>
+                        <div className="flex gap-1.5">
+                          <Input
+                            placeholder={user.salary ? `$${Number(user.salary).toLocaleString()}` : 'Enter amount...'}
                             value={editingSalary}
                             onChange={e => setEditingSalary(e.target.value.replace(/\D/g, ''))}
                             onKeyDown={e => e.key === 'Enter' && saveSalary(user.id)}
-                            style={{ flex: 1, padding: '7px 10px', borderRadius: '8px', border: '1.5px solid hsl(38,14%,85%)', background: '#fff', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none' }}
+                            className="bg-card"
                           />
-                          <button onClick={() => saveSalary(user.id)} disabled={!editingSalary} style={{ padding: '7px 12px', borderRadius: '8px', border: 'none', background: editingSalary ? 'hsl(154,50%,38%)' : 'hsl(42,18%,88%)', color: editingSalary ? '#fff' : 'hsl(24,10%,60%)', fontSize: '0.68rem', fontWeight: 700, cursor: editingSalary ? 'pointer' : 'default' }}>
+                          <Button
+                            size="sm"
+                            onClick={() => saveSalary(user.id)}
+                            disabled={!editingSalary}
+                            className="bg-success text-white hover:bg-success/85"
+                          >
                             Save
-                          </button>
+                          </Button>
                         </div>
                       </div>
 
                       <div>
-                        <p style={{ fontSize: '0.6rem', fontWeight: 700, color: 'hsl(24,8%,48%)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '7px' }}>Access Permissions</p>
-                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        <p className="mb-1.5 text-[0.6rem] font-bold uppercase tracking-[0.06em] text-ghost">
+                          Access Permissions
+                        </p>
+                        <div className="flex flex-wrap gap-1">
                           {ACCESS_BY_ROLE[user.role].map(perm => (
-                            <span key={perm} style={{ padding: '2px 7px', borderRadius: '5px', background: 'hsl(200,82%,92%)', color: 'hsl(200,82%,36%)', fontSize: '0.6rem', fontWeight: 600 }}>
+                            <Badge
+                              key={perm}
+                              className="border-0 bg-sky/15 text-[0.6rem] font-semibold text-sky"
+                            >
                               {perm}
-                            </span>
+                            </Badge>
                           ))}
                         </div>
                       </div>
 
-                      <button
+                      <Button
+                        size="sm"
                         onClick={() => toggleActive(user.id)}
-                        style={{ padding: '7px 14px', borderRadius: '9px', border: 'none', cursor: 'pointer', background: isInactive ? 'hsl(154,50%,92%)' : 'hsl(4,72%,94%)', color: isInactive ? 'hsl(154,50%,36%)' : 'hsl(4,72%,44%)', fontSize: '0.72rem', fontWeight: 700, alignSelf: 'flex-start' }}
+                        className={cn(
+                          'self-start',
+                          isInactive
+                            ? 'bg-success/15 text-success hover:bg-success/25'
+                            : 'bg-danger/10 text-danger hover:bg-danger/20'
+                        )}
                       >
-                        {isInactive ? '↺ Reactivate account' : '⊘ Deactivate account'}
-                      </button>
+                        {isInactive ? 'Reactivate account' : 'Deactivate account'}
+                      </Button>
                     </div>
                   )}
-                </div>
+                </Card>
               )
             })}
           </div>
@@ -410,26 +545,18 @@ export default function TeamPage() {
           onClose={() => setShowAddMember(false)}
           onSuccess={() => {
             setShowAddMember(false)
-            // Reload employees list
             const supabase = createClient()
-            supabase.from('users').select('id, name, role, tasks_today, tasks_total, salary, email, phone, joined_at, active').neq('role', 'client').order('name')
-              .then(({ data }) => { if (data) setEmployees(data as typeof employees) })
+            supabase
+              .from('users')
+              .select('id, name, role, tasks_today, tasks_total, salary, email, phone, joined_at, active')
+              .neq('role', 'client')
+              .order('name')
+              .then(({ data }) => {
+                if (data) setEmployees(data as typeof employees)
+              })
           }}
         />
       )}
     </main>
-  )
-}
-
-function FPill({ label, active, onClick, color }: { label: string; active: boolean; onClick: () => void; color?: string }) {
-  return (
-    <button onClick={onClick} style={{
-      padding: '4px 11px', borderRadius: '9999px', border: 'none', cursor: 'pointer',
-      background: active ? (color || 'hsl(25,82%,60%)') : 'rgba(255,255,255,0.07)',
-      color: active ? '#fff' : 'hsl(140,7%,48%)',
-      fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap', transition: 'background 0.15s',
-    }}>
-      {label}
-    </button>
   )
 }

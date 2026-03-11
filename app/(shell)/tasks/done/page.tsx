@@ -4,35 +4,53 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
+
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import type { ContentType } from '@/lib/types'
 
 gsap.registerPlugin(useGSAP)
 
-const TYPE_CFG: Record<ContentType, { bg: string; label: string }> = {
-  graphic: { bg: 'hsl(14,72%,62%)',  label: 'Graphic' },
-  video:   { bg: 'hsl(40,95%,62%)',  label: 'Video'   },
-  reel:    { bg: 'hsl(161,58%,50%)', label: 'Reel'    },
-  story:   { bg: 'hsl(268,60%,68%)', label: 'Story'   },
+const TYPE_CFG: Record<ContentType, { label: string; badgeClass: string }> = {
+  graphic: { label: 'Graphic', badgeClass: 'bg-coral/15 text-coral' },
+  video: { label: 'Video', badgeClass: 'bg-lemon/20 text-amber-700' },
+  reel: { label: 'Reel', badgeClass: 'bg-mint/15 text-mint' },
+  story: { label: 'Story', badgeClass: 'bg-lavender/15 text-lavender' },
 }
 
 type TaskRow = {
-  id: string; title: string; due_date: string; status: string
+  id: string
+  title: string
+  due_date: string
+  status: string
   content_pieces: { id: string; type: ContentType } | null
   clients: { id: string; name: string; brand_color: string } | null
 }
 
+type TaskFetchRow = Omit<TaskRow, 'content_pieces' | 'clients'> & {
+  content_pieces: TaskRow['content_pieces'] | TaskRow['content_pieces'][]
+  clients: TaskRow['clients'] | TaskRow['clients'][]
+}
+
 export default function DoneTasksPage() {
-  const router  = useRouter()
+  const router = useRouter()
   const listRef = useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = useState(false)
-  const [tasks,   setTasks]   = useState<TaskRow[]>([])
+  const [tasks, setTasks] = useState<TaskRow[]>([])
 
   useEffect(() => {
     async function load() {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
 
       const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
       const isAdmin = profile?.role === 'admin'
@@ -44,25 +62,27 @@ export default function DoneTasksPage() {
         .order('due_date', { ascending: false })
 
       if (!isAdmin) {
-        query = (query as any).eq('assigned_to', user.id)
+        query = query.eq('assigned_to', user.id)
       }
 
       const { data } = await query
       setTasks(
-        ((data || []) as any[]).map(t => ({
+        ((data || []) as TaskFetchRow[]).map(t => ({
           ...t,
           content_pieces: Array.isArray(t.content_pieces) ? (t.content_pieces[0] ?? null) : t.content_pieces,
-          clients:         Array.isArray(t.clients)        ? (t.clients[0]        ?? null) : t.clients,
+          clients: Array.isArray(t.clients) ? (t.clients[0] ?? null) : t.clients,
         }))
       )
       setMounted(true)
     }
-    load()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+    void load()
+  }, [router])
 
   useGSAP(() => {
     if (!mounted || !listRef.current) return
-    gsap.fromTo('.done-card',
+    gsap.fromTo(
+      '[data-animate="done-card"]',
       { y: 8, opacity: 0 },
       { y: 0, opacity: 1, duration: 0.3, stagger: 0.04, ease: 'power2.out', clearProps: 'all' }
     )
@@ -71,103 +91,104 @@ export default function DoneTasksPage() {
   if (!mounted) return null
 
   return (
-    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)' }}>
-
-      <div style={{ background: '#0F1A14', padding: '18px 20px 16px', flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button onClick={() => router.push('/tasks')} style={{
-            background: 'rgba(255,255,255,0.06)', border: 'none', cursor: 'pointer',
-            width: 30, height: 30, borderRadius: '8px', color: 'hsl(140,7%,52%)', fontSize: '0.9rem',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>←</button>
+    <main className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">
+      <section className="border-b border-white/4 bg-dark px-5 pt-[18px] pb-4">
+        <div className="flex items-center gap-2.5">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => router.push('/tasks')}
+            className="bg-white/6 text-dark-muted hover:bg-white/10 hover:text-dark-text"
+          >
+            ←
+          </Button>
           <div>
-            <p style={{ fontSize: '0.6rem', color: 'hsl(140,7%,48%)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tasks</p>
-            <h1 style={{ fontSize: '1.167rem', fontWeight: 800, color: 'hsl(42,22%,84%)', lineHeight: 1 }}>Completed</h1>
+            <p className="text-[0.6rem] uppercase tracking-[0.08em] text-dark-muted">Tasks</p>
+            <h1 className="text-md font-extrabold leading-none text-dark-text">Completed</h1>
           </div>
-          <div style={{ marginLeft: 'auto', background: 'hsl(154,40%,20%)', borderRadius: '99px', padding: '3px 10px' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'hsl(154,58%,60%)' }}>{tasks.length} done</span>
-          </div>
+          <Badge className="ml-auto border-0 bg-success/25 px-3 py-1 text-xs font-extrabold text-success">
+            {tasks.length} done
+          </Badge>
         </div>
-      </div>
+      </section>
 
-      <div ref={listRef} style={{ padding: '16px', flex: 1 }}>
+      <div ref={listRef} className="flex-1 p-4">
         {tasks.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '60px 24px', color: 'hsl(24,10%,54%)' }}>
-            <div style={{ fontSize: '2.4rem', marginBottom: '10px' }}>📋</div>
-            <p style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '4px' }}>Nothing completed yet</p>
-            <p style={{ fontSize: '0.75rem' }}>Finished tasks will appear here.</p>
-          </div>
+          <Card className="border border-dashed border-border bg-card shadow-none">
+            <CardContent className="py-15 text-center text-muted-foreground">
+              <div className="mb-2 text-4xl">📋</div>
+              <p className="mb-1 text-sm font-bold text-foreground">Nothing completed yet</p>
+              <p className="text-xs">Finished tasks will appear here.</p>
+            </CardContent>
+          </Card>
         )}
 
         {tasks.length > 0 && (
-          <div style={{
-            background: 'hsl(154,50%,96%)', border: '1px solid hsl(154,50%,84%)',
-            borderRadius: '14px', padding: '12px 14px', marginBottom: '16px',
-            display: 'flex', alignItems: 'center', gap: '12px',
-          }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: '50%', background: 'hsl(154,50%,40%)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '1.2rem', flexShrink: 0, color: '#fff',
-            }}>✓</div>
-            <div>
-              <p style={{ fontSize: '0.82rem', fontWeight: 800, color: 'hsl(154,40%,20%)' }}>
-                {tasks.length} task{tasks.length !== 1 ? 's' : ''} completed
-              </p>
-              <p style={{ fontSize: '0.68rem', color: 'hsl(154,30%,40%)' }}>
-                Great work — keep the momentum going.
-              </p>
-            </div>
-          </div>
+          <Card className="mb-4 border border-success/25 bg-success/10 shadow-none">
+            <CardContent className="flex items-center gap-3 py-4">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-success text-xl text-white">
+                ✓
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-success">
+                  {tasks.length} task{tasks.length !== 1 ? 's' : ''} completed
+                </p>
+                <p className="text-xs text-success/80">Great work. Keep the momentum going.</p>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
+        <div className="flex flex-col gap-2">
           {tasks.map(task => {
-            const cp     = task.content_pieces
+            const cp = task.content_pieces
             const client = task.clients
-            const tc     = cp ? TYPE_CFG[cp.type] : TYPE_CFG.graphic
+            const tc = cp ? TYPE_CFG[cp.type] : TYPE_CFG.graphic
 
             return (
-              <div
+              <Card
                 key={task.id}
-                className="done-card"
+                data-animate="done-card"
                 onClick={() => cp && router.push(`/brief/${cp.id}`)}
-                style={{
-                  background: '#fff', borderRadius: '14px',
-                  border: '1px solid hsl(38,14%,90%)', padding: '12px 14px',
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  cursor: cp ? 'pointer' : 'default', opacity: 0.85,
-                }}
+                className={cn(
+                  'gap-0 border border-border py-0 opacity-85 shadow-none transition-all',
+                  cp && 'cursor-pointer hover:-translate-y-0.5 hover:shadow-sm'
+                )}
               >
-                <div style={{
-                  width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
-                  background: 'hsl(154,50%,90%)', border: '1.5px solid hsl(154,50%,60%)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '0.75rem', color: 'hsl(154,50%,38%)', fontWeight: 800,
-                }}>✓</div>
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{
-                    fontSize: '0.82rem', fontWeight: 600, color: 'hsl(24,10%,44%)',
-                    lineHeight: 1.3, marginBottom: '3px',
-                    textDecoration: 'line-through', textDecorationColor: 'hsl(24,10%,70%)',
-                  }}>
-                    {task.title}
-                  </p>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    {client && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <div style={{ width: 5, height: 5, borderRadius: '50%', background: client.brand_color }} />
-                        <span style={{ fontSize: '0.6rem', color: 'hsl(24,10%,56%)' }}>{client.name}</span>
-                      </div>
-                    )}
-                    {cp && <span style={{ fontSize: '0.58rem', color: tc.bg, fontWeight: 700 }}>{tc.label}</span>}
-                    <span style={{ fontSize: '0.6rem', color: 'hsl(154,50%,40%)', marginLeft: 'auto', fontWeight: 600 }}>
-                      {new Date(task.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </span>
+                <CardContent className="flex items-center gap-3 py-4">
+                  <div className="flex size-[26px] shrink-0 items-center justify-center rounded-full border border-success/50 bg-success/10 text-[0.75rem] font-extrabold text-success">
+                    ✓
                   </div>
-                </div>
-              </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="mb-1 text-sm font-semibold leading-5 text-muted-foreground line-through">
+                      {task.title}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {client && (
+                        <div
+                          style={{ '--client-color': client.brand_color } as React.CSSProperties}
+                          className="flex items-center gap-1"
+                        >
+                          <div className="size-1.5 rounded-full bg-[var(--client-color)]" />
+                          <span className="text-[0.6rem] text-muted-foreground">{client.name}</span>
+                        </div>
+                      )}
+                      {cp && (
+                        <Badge className={cn('border-0 text-[0.58rem] font-bold', tc.badgeClass)}>
+                          {tc.label}
+                        </Badge>
+                      )}
+                      <span className="ml-auto text-[0.6rem] font-semibold text-success">
+                        {new Date(`${task.due_date}T00:00:00`).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             )
           })}
         </div>

@@ -1,9 +1,7 @@
 import type { Metadata, Viewport } from 'next'
-import { Plus_Jakarta_Sans, Public_Sans } from 'next/font/google'
 import './globals.css'
 import { cn } from "@/lib/utils";
-
-const publicSans = Public_Sans({subsets:['latin'],variable:'--font-sans'})
+import { ThemeProvider } from "@/components/theme-provider"
 
 export const metadata: Metadata = {
   title: 'AgencyOS',
@@ -25,11 +23,18 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={cn("font-sans", publicSans.variable)}>
+    <html lang="en" className={cn("font-sans")} suppressHydrationWarning>
       <body>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
         <div id="app-root">
           {children}
         </div>
+        </ThemeProvider>
       </body>
     </html>
   )

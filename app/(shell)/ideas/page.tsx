@@ -4,24 +4,56 @@ import { useState, useRef, useEffect } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { useRouter } from 'next/navigation'
+
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { UserAvatar } from '@/components/ui/user-avatar'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/supabase/useUser'
+import { cn } from '@/lib/utils'
 import type { ContentType, IdeaStatus } from '@/lib/types'
-import { getInitials, getAvatarColor } from '@/lib/utils'
 
 gsap.registerPlugin(useGSAP)
 
-const TYPE_CFG: Record<ContentType, { label: string; color: string; bg: string }> = {
-  graphic: { label: 'Graphic', color: 'hsl(14,72%,62%)',  bg: 'hsl(14,72%,95%)' },
-  video:   { label: 'Video',   color: 'hsl(40,95%,52%)',  bg: 'hsl(40,95%,93%)' },
-  reel:    { label: 'Reel',    color: 'hsl(161,58%,44%)', bg: 'hsl(161,58%,92%)' },
-  story:   { label: 'Story',   color: 'hsl(268,60%,68%)', bg: 'hsl(268,60%,93%)' },
+const TYPE_CFG: Record<ContentType, { label: string; badgeClass: string }> = {
+  graphic: { label: 'Graphic', badgeClass: 'bg-coral/15 text-coral' },
+  video: { label: 'Video', badgeClass: 'bg-lemon/20 text-amber-700' },
+  reel: { label: 'Reel', badgeClass: 'bg-mint/15 text-mint' },
+  story: { label: 'Story', badgeClass: 'bg-lavender/15 text-lavender' },
 }
 
-const STATUS_CFG: Record<IdeaStatus, { label: string; color: string; bg: string; dot: string }> = {
-  raw:        { label: 'Raw',        color: 'hsl(24,10%,44%)',  bg: 'hsl(42,18%,93%)',  dot: 'hsl(24,10%,60%)' },
-  shortlisted:{ label: 'Shortlisted',color: 'hsl(40,92%,40%)',  bg: 'hsl(40,92%,94%)',  dot: 'hsl(40,92%,52%)' },
-  converted:  { label: 'Converted',  color: 'hsl(154,50%,36%)', bg: 'hsl(154,50%,92%)', dot: 'hsl(154,50%,44%)' },
+const STATUS_CFG: Record<
+  IdeaStatus,
+  { label: string; badgeClass: string; dotClass: string; actionClass?: string }
+> = {
+  raw: {
+    label: 'Raw',
+    badgeClass: 'bg-secondary text-muted-foreground',
+    dotClass: 'bg-muted-foreground',
+    actionClass: 'bg-lemon/20 text-amber-700 hover:bg-lemon/30',
+  },
+  shortlisted: {
+    label: 'Shortlisted',
+    badgeClass: 'bg-lemon/20 text-amber-700',
+    dotClass: 'bg-lemon',
+    actionClass: 'bg-success/15 text-success hover:bg-success/25',
+  },
+  converted: {
+    label: 'Converted',
+    badgeClass: 'bg-success/15 text-success',
+    dotClass: 'bg-success',
+  },
 }
 
 type ClientRow = { id: string; name: string; brand_color: string }
@@ -47,27 +79,62 @@ function normalize<T>(x: T | T[] | null): T | null {
 }
 
 function timeAgo(s: string): string {
-  const diff = Math.round((Date.now() - new Date(s).getTime()) / 86400000)
+  const now = new Date()
+  const created = new Date(s)
+  const diff = Math.round((now.getTime() - created.getTime()) / 86400000)
   if (diff === 0) return 'Today'
   if (diff === 1) return 'Yesterday'
   return `${diff}d ago`
 }
 
-const EMPTY_FORM = { title: '', type: '' as ContentType | '', client_id: '', body: '', tags: [] as string[] }
+const EMPTY_FORM = {
+  title: '',
+  type: '' as ContentType | '',
+  client_id: '',
+  body: '',
+  tags: [] as string[],
+}
+
+function FilterPill({
+  label,
+  active,
+  onClick,
+  color,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+  color?: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={color ? ({ '--pill-color': color } as React.CSSProperties) : undefined}
+      className={cn(
+        'rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap transition-colors',
+        active && color && 'bg-[var(--pill-color)] text-white',
+        active && !color && 'bg-coral text-white',
+        !active && 'bg-white/7 text-dark-muted hover:bg-white/10 hover:text-dark-text'
+      )}
+    >
+      {label}
+    </button>
+  )
+}
 
 export default function IdeasPage() {
-  const router  = useRouter()
+  const router = useRouter()
   const gridRef = useRef<HTMLDivElement>(null)
   const { user } = useUser()
 
-  const [mounted,      setMounted]      = useState(false)
-  const [ideas,        setIdeas]        = useState<IdeaRow[]>([])
-  const [clients,      setClients]      = useState<ClientRow[]>([])
+  const [mounted, setMounted] = useState(false)
+  const [ideas, setIdeas] = useState<IdeaRow[]>([])
+  const [clients, setClients] = useState<ClientRow[]>([])
   const [statusFilter, setStatusFilter] = useState<IdeaStatus | 'all'>('all')
   const [clientFilter, setClientFilter] = useState<string>('all')
-  const [showForm,     setShowForm]     = useState(false)
-  const [form,         setForm]         = useState({ ...EMPTY_FORM })
-  const [tagInput,     setTagInput]     = useState('')
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ ...EMPTY_FORM })
+  const [tagInput, setTagInput] = useState('')
 
   useEffect(() => {
     async function load() {
@@ -83,12 +150,13 @@ export default function IdeasPage() {
       setClients(clientsRes.data || [])
       setMounted(true)
     }
-    load()
+    void load()
   }, [])
 
   useGSAP(() => {
     if (!mounted || !gridRef.current) return
-    gsap.fromTo('.idea-card',
+    gsap.fromTo(
+      '[data-animate="idea-card"]',
       { y: 16, opacity: 0 },
       { y: 0, opacity: 1, duration: 0.35, stagger: 0.06, ease: 'back.out(1.2)', clearProps: 'all' }
     )
@@ -101,9 +169,9 @@ export default function IdeasPage() {
     .filter(i => clientFilter === 'all' || i.client_id === clientFilter)
 
   const counts = {
-    raw:        ideas.filter(i => i.status === 'raw').length,
+    raw: ideas.filter(i => i.status === 'raw').length,
     shortlisted: ideas.filter(i => i.status === 'shortlisted').length,
-    converted:  ideas.filter(i => i.status === 'converted').length,
+    converted: ideas.filter(i => i.status === 'converted').length,
   }
 
   async function addIdea() {
@@ -112,14 +180,14 @@ export default function IdeasPage() {
     const { data } = await supabase
       .from('ideas')
       .insert({
-        title:     form.title.trim(),
-        body:      form.body.trim(),
-        type:      form.type || null,
+        title: form.title.trim(),
+        body: form.body.trim(),
+        type: form.type || null,
         client_id: form.client_id || null,
-        tags:      form.tags,
-        status:    'raw',
+        tags: form.tags,
+        status: 'raw',
         created_by: user.id,
-        org_id:    user.org_id,
+        org_id: user.org_id,
       })
       .select('*, clients:client_id(id, name, brand_color), author:created_by(id, name)')
       .single()
@@ -130,7 +198,7 @@ export default function IdeasPage() {
   }
 
   async function updateStatus(id: string, status: IdeaStatus) {
-    setIdeas(prev => prev.map(i => i.id === id ? { ...i, status } : i))
+    setIdeas(prev => prev.map(i => (i.id === id ? { ...i, status } : i)))
     const supabase = createClient()
     await supabase.from('ideas').update({ status }).eq('id', id)
   }
@@ -152,276 +220,284 @@ export default function IdeasPage() {
   }
 
   return (
-    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)' }}>
-
-      {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <div style={{ background: '#0F1A14', padding: '18px 20px 14px', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: '0.6rem', color: 'hsl(140,7%,48%)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '1px' }}>
+    <main className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">
+      <section className="bg-dark px-5 pt-[18px] pb-[14px]">
+        <div className="mb-3.5 flex items-center gap-3">
+          <div className="flex-1">
+            <p className="mb-px text-2xs uppercase tracking-[0.08em] text-dark-muted">
               Content Strategy
             </p>
-            <h1 style={{ fontSize: '1.167rem', fontWeight: 800, color: 'hsl(42,22%,84%)', lineHeight: 1 }}>Idea Dump</h1>
+            <h1 className="text-md font-extrabold leading-none text-dark-text">Idea Dump</h1>
           </div>
-          <button
+          <Button
             onClick={() => setShowForm(f => !f)}
-            style={{
-              padding: '8px 16px', borderRadius: '10px', border: 'none', cursor: 'pointer',
-              background: showForm ? 'rgba(255,255,255,0.08)' : 'hsl(25,82%,58%)',
-              color: showForm ? 'hsl(140,7%,52%)' : '#fff',
-              fontSize: '0.78rem', fontWeight: 700, transition: 'all 0.15s',
-            }}
+            className={cn(
+              showForm
+                ? 'bg-white/8 text-dark-text hover:bg-white/12'
+                : 'bg-coral text-white hover:bg-coral/85'
+            )}
           >
-            {showForm ? '✕ Cancel' : '+ New Idea'}
-          </button>
+            {showForm ? 'Cancel' : 'New Idea'}
+          </Button>
         </div>
 
-        {/* Stats */}
-        <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}>
+        <div className="mb-3.5 flex flex-wrap gap-3">
           {(['raw', 'shortlisted', 'converted'] as IdeaStatus[]).map(s => {
             const sc = STATUS_CFG[s]
             return (
-              <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <div style={{ width: 7, height: 7, borderRadius: '50%', background: sc.dot }} />
-                <span style={{ fontSize: '0.68rem', color: 'hsl(140,7%,48%)' }}>{counts[s]} {sc.label}</span>
+              <div key={s} className="flex items-center gap-1.5">
+                <div className={cn('size-1.5 rounded-full', sc.dotClass)} />
+                <span className="text-xs text-dark-muted">
+                  {counts[s]} {sc.label}
+                </span>
               </div>
             )
           })}
         </div>
 
-        {/* Filters */}
-        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5">
           <FilterPill label="All" active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
           {(['raw', 'shortlisted', 'converted'] as IdeaStatus[]).map(s => (
-            <FilterPill key={s} label={STATUS_CFG[s].label} active={statusFilter === s} onClick={() => setStatusFilter(s)} />
+            <FilterPill
+              key={s}
+              label={STATUS_CFG[s].label}
+              active={statusFilter === s}
+              onClick={() => setStatusFilter(s)}
+            />
           ))}
-          <div style={{ width: '1px', background: 'rgba(255,255,255,0.07)', flexShrink: 0, margin: '0 2px' }} />
-          <FilterPill label="All Clients" active={clientFilter === 'all'} onClick={() => setClientFilter('all')} />
+          <div className="mx-0.5 w-px shrink-0 bg-white/7" />
+          <FilterPill
+            label="All Clients"
+            active={clientFilter === 'all'}
+            onClick={() => setClientFilter('all')}
+          />
           {clients.map(c => (
-            <FilterPill key={c.id} label={c.name} active={clientFilter === c.id} onClick={() => setClientFilter(c.id)} color={c.brand_color} />
+            <FilterPill
+              key={c.id}
+              label={c.name}
+              active={clientFilter === c.id}
+              onClick={() => setClientFilter(c.id)}
+              color={c.brand_color}
+            />
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* ── New Idea Form ─────────────────────────────────────────────────── */}
       {showForm && (
-        <div style={{
-          background: 'hsl(42,38%,98%)', borderBottom: '1px solid hsl(38,14%,88%)',
-          padding: '16px 20px', flexShrink: 0,
-        }}>
-          <p style={{ fontSize: '0.72rem', fontWeight: 800, color: 'hsl(24,20%,22%)', marginBottom: '12px' }}>New Idea</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <section className="border-b border-border bg-card px-5 py-4">
+          <Card className="gap-4 border border-border bg-card shadow-none">
+            <CardContent className="flex flex-col gap-3 py-4">
+              <p className="text-xs font-extrabold uppercase tracking-[0.06em] text-foreground">
+                New Idea
+              </p>
 
-            <input
-              placeholder="Idea title *"
-              value={form.title}
-              onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
-              style={inputStyle}
-            />
+              <Input
+                placeholder="Idea title *"
+                value={form.title}
+                onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+                className="bg-background"
+              />
 
-            <textarea
-              placeholder="Describe the idea — concept, angle, why it'll work, inspiration… *"
-              value={form.body}
-              onChange={e => setForm(p => ({ ...p, body: e.target.value }))}
-              rows={3}
-              style={{ ...inputStyle, resize: 'none', lineHeight: 1.6 }}
-            />
+              <Textarea
+                placeholder="Describe the idea: concept, angle, why it'll work, inspiration..."
+                value={form.body}
+                onChange={e => setForm(p => ({ ...p, body: e.target.value }))}
+                rows={4}
+                className="resize-none bg-background"
+              />
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value as ContentType | '' }))} style={inputStyle}>
-                <option value="">Content type (optional)</option>
-                <option value="graphic">Graphic</option>
-                <option value="video">Video</option>
-                <option value="reel">Reel</option>
-                <option value="story">Story</option>
-              </select>
-              <select value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))} style={inputStyle}>
-                <option value="">Client (optional)</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Select
+                  value={form.type || undefined}
+                  onValueChange={value => setForm(p => ({ ...p, type: value as ContentType | '' }))}
+                >
+                  <SelectTrigger className="w-full bg-background">
+                    <SelectValue placeholder="Content type (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="graphic">Graphic</SelectItem>
+                      <SelectItem value="video">Video</SelectItem>
+                      <SelectItem value="reel">Reel</SelectItem>
+                      <SelectItem value="story">Story</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
 
-            {/* Tags */}
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-              {form.tags.map(tag => (
-                <span key={tag} style={{
-                  padding: '2px 8px', borderRadius: '99px', background: 'hsl(200,82%,92%)',
-                  color: 'hsl(200,82%,38%)', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer',
-                }} onClick={() => setForm(p => ({ ...p, tags: p.tags.filter(t => t !== tag) }))}>
-                  #{tag} ×
-                </span>
-              ))}
-              <div style={{ display: 'flex', gap: '4px' }}>
-                <input
-                  placeholder="Add tag…"
-                  value={tagInput}
-                  onChange={e => setTagInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addTag())}
-                  style={{ ...inputStyle, width: 100, padding: '4px 8px', fontSize: '0.68rem' }}
-                />
-                <button onClick={addTag} style={{ padding: '4px 8px', borderRadius: '6px', border: 'none', background: 'hsl(200,82%,88%)', color: 'hsl(200,82%,38%)', fontSize: '0.68rem', cursor: 'pointer', fontWeight: 700 }}>+</button>
+                <Select
+                  value={form.client_id || undefined}
+                  onValueChange={value => setForm(p => ({ ...p, client_id: value ?? '' }))}
+                >
+                  <SelectTrigger className="w-full bg-background">
+                    <SelectValue placeholder="Client (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {clients.map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
 
-            <button
-              onClick={addIdea}
-              disabled={!form.title.trim() || !form.body.trim()}
-              style={{
-                padding: '10px 20px', borderRadius: '10px', border: 'none', cursor: 'pointer',
-                background: form.title.trim() && form.body.trim() ? 'hsl(25,82%,58%)' : 'hsl(38,14%,86%)',
-                color: form.title.trim() && form.body.trim() ? '#fff' : 'hsl(24,10%,60%)',
-                fontSize: '0.82rem', fontWeight: 800, alignSelf: 'flex-start',
-                transition: 'background 0.15s',
-              }}
-            >
-              Dump it →
-            </button>
-          </div>
-        </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {form.tags.map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() =>
+                      setForm(p => ({ ...p, tags: p.tags.filter(t => t !== tag) }))
+                    }
+                    className="rounded-full bg-sky/15 px-2 py-1 text-[0.65rem] font-bold text-sky"
+                  >
+                    #{tag} ×
+                  </button>
+                ))}
+
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    placeholder="Add tag..."
+                    value={tagInput}
+                    onChange={e => setTagInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                    className="h-8 w-28 bg-background text-xs"
+                  />
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    onClick={addTag}
+                    className="bg-sky/15 text-sky hover:bg-sky/25"
+                  >
+                    +
+                  </Button>
+                </div>
+              </div>
+
+              <Button
+                onClick={addIdea}
+                disabled={!form.title.trim() || !form.body.trim()}
+                className="self-start bg-coral text-white hover:bg-coral/85"
+              >
+                Dump it
+              </Button>
+            </CardContent>
+          </Card>
+        </section>
       )}
 
-      {/* ── Ideas Grid ───────────────────────────────────────────────────── */}
-      <div ref={gridRef} style={{ padding: '16px', flex: 1 }}>
-        {filtered.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '60px 24px', color: 'hsl(24,10%,54%)' }}>
-            <div style={{ fontSize: '2.4rem', marginBottom: '10px' }}>💡</div>
-            <p style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '4px' }}>No ideas yet</p>
-            <p style={{ fontSize: '0.75rem' }}>Hit "New Idea" and dump whatever's in your head. No filters, no judgment.</p>
-          </div>
-        )}
+      <div ref={gridRef} className="flex-1 p-4">
+        {filtered.length === 0 ? (
+          <Card className="border border-dashed border-border bg-card shadow-none">
+            <CardContent className="py-14 text-center">
+              <div className="mb-2 text-4xl">💡</div>
+              <p className="mb-1 text-sm font-bold text-foreground">No ideas yet</p>
+              <p className="text-xs text-muted-foreground">
+                Hit &quot;New Idea&quot; and dump whatever&apos;s in your head.
+              </p>
+            </CardContent>
+          </Card>
+        ) : null}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '12px' }}>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3">
           {filtered.map(idea => {
-            const sc     = STATUS_CFG[idea.status]
-            const tc     = idea.type ? TYPE_CFG[idea.type] : null
+            const sc = STATUS_CFG[idea.status]
+            const tc = idea.type ? TYPE_CFG[idea.type] : null
             const client = normalize(idea.clients)
             const author = normalize(idea.author)
 
             return (
-              <div
+              <Card
                 key={idea.id}
-                className="idea-card"
-                style={{
-                  background: '#fff', borderRadius: '16px',
-                  border: '1px solid hsl(38,14%,90%)', overflow: 'hidden',
-                  transition: 'transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.15s ease',
-                }}
-                onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = 'translateY(-3px)'; el.style.boxShadow = '0 10px 28px rgba(0,0,0,0.07)' }}
-                onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = ''; el.style.boxShadow = '' }}
+                data-animate="idea-card"
+                className="group gap-0 overflow-hidden border border-border py-0 shadow-none transition-all hover:-translate-y-1 hover:shadow-md"
               >
-                {/* Status bar */}
-                <div style={{ height: 4, background: sc.dot }} />
+                <div className={cn('h-1 w-full', sc.dotClass)} />
 
-                <div style={{ padding: '14px' }}>
-                  {/* Header chips */}
-                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '8px', alignItems: 'center' }}>
-                    <span style={{ padding: '2px 8px', borderRadius: '99px', background: sc.bg, color: sc.color, fontSize: '0.6rem', fontWeight: 700 }}>
+                <CardContent className="flex flex-col gap-3 py-4">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge className={cn('border-0 text-[0.6rem] font-bold', sc.badgeClass)}>
                       {sc.label}
-                    </span>
+                    </Badge>
                     {tc && (
-                      <span style={{ padding: '2px 8px', borderRadius: '99px', background: tc.bg, color: tc.color, fontSize: '0.6rem', fontWeight: 700 }}>
+                      <Badge className={cn('border-0 text-[0.6rem] font-bold', tc.badgeClass)}>
                         {tc.label}
-                      </span>
+                      </Badge>
                     )}
                     {client && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
-                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: client.brand_color }} />
-                        <span style={{ fontSize: '0.6rem', color: 'hsl(24,10%,44%)', fontWeight: 600 }}>{client.name}</span>
+                      <div
+                        style={{ '--client-color': client.brand_color } as React.CSSProperties}
+                        className="ml-auto flex items-center gap-1"
+                      >
+                        <div className="size-1.5 rounded-full bg-[var(--client-color)]" />
+                        <span className="text-[0.6rem] font-semibold text-muted-foreground">
+                          {client.name}
+                        </span>
                       </div>
                     )}
                   </div>
 
-                  <h3 style={{ fontSize: '0.92rem', fontWeight: 800, color: 'hsl(24,20%,11%)', lineHeight: 1.3, marginBottom: '8px' }}>
-                    {idea.title}
-                  </h3>
+                  <div>
+                    <h3 className="mb-2 text-sm font-extrabold leading-5 text-foreground">
+                      {idea.title}
+                    </h3>
+                    <p className="line-clamp-3 text-xs leading-6 text-muted-foreground">
+                      {idea.body}
+                    </p>
+                  </div>
 
-                  <p style={{
-                    fontSize: '0.75rem', color: 'hsl(24,10%,40%)', lineHeight: 1.6, marginBottom: '10px',
-                    overflow: 'hidden', display: '-webkit-box',
-                    WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
-                  }}>
-                    {idea.body}
-                  </p>
-
-                  {/* Tags */}
                   {idea.tags && idea.tags.length > 0 && (
-                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                    <div className="flex flex-wrap gap-1">
                       {idea.tags.map(tag => (
-                        <span key={tag} style={{
-                          padding: '1px 6px', borderRadius: '99px',
-                          background: 'hsl(200,82%,93%)', color: 'hsl(200,82%,38%)',
-                          fontSize: '0.58rem', fontWeight: 700,
-                        }}>
+                        <Badge
+                          key={tag}
+                          className="border-0 bg-sky/15 text-[0.58rem] font-bold text-sky"
+                        >
                           #{tag}
-                        </span>
+                        </Badge>
                       ))}
                     </div>
                   )}
 
-                  {/* Footer */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '8px', borderTop: '1px solid hsl(38,14%,92%)' }}>
-                    {author && (
-                      <div style={{
-                        width: 20, height: 20, borderRadius: '50%', background: getAvatarColor(author.id),
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '0.5rem', fontWeight: 800, color: '#fff', flexShrink: 0,
-                      }}>
-                        {getInitials(author.name)}
-                      </div>
-                    )}
-                    <span style={{ fontSize: '0.6rem', color: 'hsl(24,10%,56%)' }}>{timeAgo(idea.created_at)}</span>
+                  <div className="flex items-center gap-2 border-t border-border pt-2">
+                    {author ? <UserAvatar userId={author.id} name={author.name} size="sm" /> : null}
+                    <span className="text-[0.6rem] text-muted-foreground">
+                      {timeAgo(idea.created_at)}
+                    </span>
 
-                    <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
+                    <div className="ml-auto flex items-center gap-1">
                       {idea.status === 'raw' && (
-                        <button onClick={() => updateStatus(idea.id, 'shortlisted')} style={actionBtnStyle('hsl(40,92%,52%)', 'hsl(40,92%,94%)')}>
-                          ★ Shortlist
-                        </button>
+                        <Button
+                          variant="secondary"
+                          size="xs"
+                          onClick={() => updateStatus(idea.id, 'shortlisted')}
+                          className={sc.actionClass}
+                        >
+                          Shortlist
+                        </Button>
                       )}
                       {idea.status !== 'converted' && (
-                        <button onClick={() => convertToBrief(idea)} style={actionBtnStyle('hsl(154,50%,38%)', 'hsl(154,50%,92%)')}>
-                          → Brief
-                        </button>
+                        <Button
+                          variant="secondary"
+                          size="xs"
+                          onClick={() => convertToBrief(idea)}
+                          className="bg-success/15 text-success hover:bg-success/25"
+                        >
+                          Brief
+                        </Button>
                       )}
                       {idea.status === 'converted' && (
-                        <span style={{ fontSize: '0.62rem', color: 'hsl(154,50%,38%)', fontWeight: 700 }}>✓ In pipeline</span>
+                        <span className="text-[0.62rem] font-bold text-success">In pipeline</span>
                       )}
                     </div>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             )
           })}
         </div>
       </div>
     </main>
-  )
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '8px 12px', borderRadius: '10px',
-  border: '1.5px solid hsl(38,14%,86%)', background: '#fff',
-  fontSize: '0.8rem', color: 'hsl(24,15%,18%)', fontFamily: 'inherit',
-  outline: 'none', boxSizing: 'border-box',
-}
-
-function actionBtnStyle(color: string, bg: string): React.CSSProperties {
-  return {
-    padding: '3px 9px', borderRadius: '7px', border: 'none', cursor: 'pointer',
-    background: bg, color, fontSize: '0.62rem', fontWeight: 700, transition: 'opacity 0.1s',
-  }
-}
-
-function FilterPill({ label, active, onClick, color }: { label: string; active: boolean; onClick: () => void; color?: string }) {
-  return (
-    <button onClick={onClick} style={{
-      padding: '4px 11px', borderRadius: '9999px', border: 'none', cursor: 'pointer',
-      background: active ? (color || 'hsl(25,82%,60%)') : 'rgba(255,255,255,0.07)',
-      color: active ? '#fff' : 'hsl(140,7%,48%)',
-      fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap', transition: 'background 0.15s',
-    }}>
-      {label}
-    </button>
   )
 }

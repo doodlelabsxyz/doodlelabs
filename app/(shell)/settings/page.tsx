@@ -3,24 +3,59 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { UserAvatar } from '@/components/ui/user-avatar'
+import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import { getInitials, getAvatarColor } from '@/lib/utils'
 import { useOrg } from '@/lib/supabase/OrgContext'
 import type { Role } from '@/lib/types'
 
-type Profile  = { id: string; name: string; email: string; role: string; phone: string | null; joined_at: string | null }
-type Member   = { id: string; name: string; email: string; role: string; active: boolean }
-type Tab      = 'profile' | 'organisation' | 'team' | 'billing'
+type Profile = {
+  id: string
+  name: string
+  email: string
+  role: string
+  phone: string | null
+  joined_at: string | null
+}
 
-// ─── Invite modal ─────────────────────────────────────────────────────────────
+type Member = {
+  id: string
+  name: string
+  email: string
+  role: string
+  active: boolean
+}
+
+type Tab = 'profile' | 'organisation' | 'team' | 'billing'
 
 function InviteModal({ onClose }: { onClose: () => void }) {
-  const [email,   setEmail]   = useState('')
-  const [role,    setRole]    = useState<Role>('writer')
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState<Role>('writer')
   const [sending, setSending] = useState(false)
-  const [sent,    setSent]    = useState(false)
-  const [error,   setError]   = useState('')
-  const brand = 'hsl(25,82%,60%)'
+  const [sent, setSent] = useState(false)
+  const [error, setError] = useState('')
 
   async function handleSend() {
     if (!email || sending) return
@@ -32,108 +67,146 @@ function InviteModal({ onClose }: { onClose: () => void }) {
       body: JSON.stringify({ email, role }),
     })
     const json = await res.json()
-    if (!res.ok) { setError(json.error ?? 'Failed to send invite.'); setSending(false); return }
+    if (!res.ok) {
+      setError(json.error ?? 'Failed to send invite.')
+      setSending(false)
+      return
+    }
     setSent(true)
     setSending(false)
   }
 
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-      <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(15,26,20,0.6)', backdropFilter:'blur(4px)' }} />
-      <div style={{ position:'relative', background:'#fff', borderRadius:'20px', padding:'28px', width:'100%', maxWidth:'380px', boxShadow:'0 8px 40px rgba(0,0,0,0.18)' }}>
-        <h3 style={{ fontSize:'1rem', fontWeight:800, color:'hsl(24,20%,11%)', marginBottom:'20px' }}>Invite team member</h3>
+    <Dialog open onOpenChange={open => !open && onClose()}>
+      <DialogContent className="max-w-md gap-4">
+        <div className="absolute inset-x-0 top-0 h-1.5 rounded-t-xl bg-coral" />
+        <DialogHeader className="pt-2">
+          <DialogTitle>Invite team member</DialogTitle>
+          <DialogDescription>
+            Send access credentials to a new team member.
+          </DialogDescription>
+        </DialogHeader>
 
         {!sent ? (
-          <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
-            <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-              <label style={{ fontSize:'0.72rem', fontWeight:600, color:'hsl(24,10%,44%)' }}>Email</label>
-              <input
-                type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="teammate@agency.com"
-                className="w-full outline-none"
-                style={{ padding:'11px 13px', borderRadius:'10px', background:'hsl(40,18%,95%)', border:'1.5px solid hsl(38,14%,88%)', fontSize:'0.85rem', color:'hsl(24,20%,11%)', fontWeight:500 }}
-                onFocus={e => { e.target.style.borderColor = brand }}
-                onBlur={e => { e.target.style.borderColor = 'hsl(38,14%,88%)' }}
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">Email</label>
+              <Input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="teammate@agency.com"
+                className="bg-card"
               />
             </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-              <label style={{ fontSize:'0.72rem', fontWeight:600, color:'hsl(24,10%,44%)' }}>Role</label>
-              <select
-                value={role} onChange={e => setRole(e.target.value as Role)}
-                className="w-full outline-none"
-                style={{ padding:'11px 13px', borderRadius:'10px', background:'hsl(40,18%,95%)', border:'1.5px solid hsl(38,14%,88%)', fontSize:'0.85rem', color:'hsl(24,20%,11%)', fontWeight:500, cursor:'pointer' }}
-              >
-                {(['writer','designer','videographer','editor','poster','admin','client'] as Role[]).map(r => (
-                  <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
-                ))}
-              </select>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">Role</label>
+              <Select value={role} onValueChange={value => setRole(value as Role)}>
+                <SelectTrigger className="w-full bg-card">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {(['writer', 'designer', 'videographer', 'editor', 'poster', 'admin', 'client'] as Role[]).map(r => (
+                      <SelectItem key={r} value={r}>
+                        {r.charAt(0).toUpperCase() + r.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
-            {error && <p style={{ fontSize:'0.73rem', color:'hsl(4,72%,50%)', fontWeight:500 }}>{error}</p>}
-            <div style={{ display:'flex', gap:'8px', marginTop:'4px' }}>
-              <button onClick={onClose} style={{ flex:1, padding:'11px', borderRadius:'9999px', background:'transparent', border:'1.5px solid hsl(38,14%,88%)', color:'hsl(24,8%,55%)', fontWeight:600, fontSize:'0.8rem', cursor:'pointer' }}>Cancel</button>
-              <button onClick={handleSend} disabled={!email || sending}
-                style={{ flex:2, padding:'11px', borderRadius:'9999px', background:email ? brand : 'hsl(38,14%,85%)', color:'white', fontWeight:700, fontSize:'0.82rem', border:'none', cursor:email ? 'pointer' : 'not-allowed', boxShadow: email ? `0 5px 18px ${brand}40` : 'none' }}>
-                {sending ? 'Sending…' : 'Send invite'}
-              </button>
-            </div>
+
+            {error && (
+              <p className="rounded-lg bg-danger/10 px-3 py-2 text-xs font-medium text-danger">
+                {error}
+              </p>
+            )}
+
+            <DialogFooter className="sm:justify-between">
+              <Button variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button onClick={handleSend} disabled={!email || sending} className="bg-coral text-white hover:bg-coral/85">
+                {sending ? 'Sending...' : 'Send invite'}
+              </Button>
+            </DialogFooter>
           </div>
         ) : (
-          <div style={{ textAlign:'center', padding:'12px 0' }}>
-            <div style={{ fontSize:'2rem', marginBottom:'10px' }}>✅</div>
-            <p style={{ fontSize:'0.85rem', fontWeight:700, color:'hsl(24,20%,11%)' }}>Invite sent to {email}</p>
-            <button onClick={onClose} style={{ marginTop:'18px', padding:'10px 28px', borderRadius:'9999px', background:brand, color:'white', fontWeight:700, fontSize:'0.82rem', border:'none', cursor:'pointer' }}>Done</button>
+          <div className="flex flex-col items-center gap-4 py-2 text-center">
+            <div className="text-4xl">✅</div>
+            <div>
+              <p className="text-sm font-bold text-foreground">Invite sent to {email}</p>
+              <p className="text-xs text-muted-foreground">They can complete setup from the invite email.</p>
+            </div>
+            <Button onClick={onClose} className="bg-coral text-white hover:bg-coral/85">
+              Done
+            </Button>
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
-// ─── Main settings page ────────────────────────────────────────────────────────
-
 export default function SettingsPage() {
-  const router  = useRouter()
+  const router = useRouter()
   const supabase = createClient()
   const { org, refreshOrg } = useOrg()
 
-  const [activeTab,  setActiveTab]  = useState<Tab>('profile')
-  const [profile,    setProfile]    = useState<Profile | null>(null)
-  const [members,    setMembers]    = useState<Member[]>([])
+  const [activeTab, setActiveTab] = useState<Tab>('profile')
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [members, setMembers] = useState<Member[]>([])
   const [loggingOut, setLoggingOut] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
-  const [isAdmin,    setIsAdmin]    = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
 
-  // Org edit state
-  const [orgName,    setOrgName]    = useState('')
-  const [orgSlug,    setOrgSlug]    = useState('')
-  const [orgSaving,  setOrgSaving]  = useState(false)
-  const [orgMsg,     setOrgMsg]     = useState('')
+  const [orgName, setOrgName] = useState('')
+  const [orgSlug, setOrgSlug] = useState('')
+  const [orgSaving, setOrgSaving] = useState(false)
+  const [orgMsg, setOrgMsg] = useState('')
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
-      const { data } = await supabase.from('users').select('id, name, role, email, phone, joined_at').eq('id', user.id).single()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+      const { data } = await supabase
+        .from('users')
+        .select('id, name, role, email, phone, joined_at')
+        .eq('id', user.id)
+        .single()
       if (data) {
         setProfile({ ...data, email: user.email ?? '' })
         setIsAdmin(data.role === 'admin')
       }
     }
-    load()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load members when Team tab opens
+    void load()
+  }, [router, supabase])
+
   useEffect(() => {
     if (activeTab !== 'team' || !isAdmin) return
     async function loadMembers() {
       const { data } = await supabase.from('users').select('id, name, email, role, active').order('name')
       if (data) setMembers(data as Member[])
     }
-    loadMembers()
-  }, [activeTab, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
+    void loadMembers()
+  }, [activeTab, isAdmin, supabase])
 
-  // Sync org form when org loads
   useEffect(() => {
-    if (org) { setOrgName(org.name); setOrgSlug(org.slug) }
+    if (org) {
+      const timeoutId = window.setTimeout(() => {
+        setOrgName(org.name)
+        setOrgSlug(org.slug)
+      }, 0)
+      return () => window.clearTimeout(timeoutId)
+    }
   }, [org])
 
   async function handleLogout() {
@@ -145,8 +218,15 @@ export default function SettingsPage() {
     if (!org || orgSaving) return
     setOrgSaving(true)
     setOrgMsg('')
-    const { error } = await supabase.from('organizations').update({ name: orgName, slug: orgSlug }).eq('id', org.id)
-    if (error) { setOrgMsg('Failed to save: ' + error.message); setOrgSaving(false); return }
+    const { error } = await supabase
+      .from('organizations')
+      .update({ name: orgName, slug: orgSlug })
+      .eq('id', org.id)
+    if (error) {
+      setOrgMsg(`Failed to save: ${error.message}`)
+      setOrgSaving(false)
+      return
+    }
     await refreshOrg()
     setOrgMsg('Saved.')
     setOrgSaving(false)
@@ -154,234 +234,252 @@ export default function SettingsPage() {
   }
 
   const TABS: { key: Tab; label: string; adminOnly?: boolean }[] = [
-    { key:'profile',      label:'Profile' },
-    { key:'organisation', label:'Organisation', adminOnly:true },
-    { key:'team',         label:'Team',         adminOnly:true },
-    { key:'billing',      label:'Billing',      adminOnly:true },
+    { key: 'profile', label: 'Profile' },
+    { key: 'organisation', label: 'Organisation', adminOnly: true },
+    { key: 'team', label: 'Team', adminOnly: true },
+    { key: 'billing', label: 'Billing', adminOnly: true },
   ]
 
   const visibleTabs = TABS.filter(t => !t.adminOnly || isAdmin)
 
   return (
-    <main className="page-main" style={{ flex:1, minWidth:0, overflowY:'auto', background:'hsl(42,30%,97%)' }}>
+    <main className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">
       {showInvite && <InviteModal onClose={() => setShowInvite(false)} />}
 
-      {/* Header */}
-      <div style={{ background:'#0F1A14', padding:'18px 20px 16px', flexShrink:0 }}>
-        <p style={{ fontSize:'0.656rem', color:'hsl(140,7%,48%)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:'1px' }}>Account</p>
-        <h1 style={{ fontSize:'1.167rem', fontWeight:800, color:'hsl(42,22%,84%)', lineHeight:1 }}>Settings</h1>
+      <section className="bg-dark px-5 pt-[18px] pb-4">
+        <p className="mb-px text-2xs uppercase tracking-[0.08em] text-dark-muted">Account</p>
+        <h1 className="text-md font-extrabold leading-none text-dark-text">Settings</h1>
+      </section>
+
+      <div className="border-b border-border bg-card px-4 pt-3">
+        <Tabs value={activeTab} onValueChange={value => setActiveTab(value as Tab)}>
+          <TabsList variant="line" className="gap-1">
+            {visibleTabs.map(t => (
+              <TabsTrigger
+                key={t.key}
+                value={t.key}
+                className="px-3 py-2 text-xs data-active:text-foreground data-active:after:bg-coral"
+              >
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display:'flex', gap:'4px', padding:'12px 16px 0', borderBottom:'1px solid hsl(38,14%,90%)', background:'#fff' }}>
-        {visibleTabs.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setActiveTab(t.key)}
-            style={{
-              padding:'8px 14px', borderRadius:'8px 8px 0 0', border:'none', background:'transparent', cursor:'pointer',
-              fontSize:'0.75rem', fontWeight: activeTab === t.key ? 700 : 500,
-              color:  activeTab === t.key ? 'hsl(24,20%,11%)' : 'hsl(24,8%,55%)',
-              borderBottom: activeTab === t.key ? '2px solid hsl(25,82%,60%)' : '2px solid transparent',
-              transition:'color 0.15s, border-color 0.15s',
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ padding:'16px', display:'flex', flexDirection:'column', gap:'12px', maxWidth:'480px' }}>
-
-        {/* ── Profile tab ─────────────────────────────────────────────────── */}
+      <div className="mx-auto flex w-full max-w-[520px] flex-col gap-3 p-4">
         {activeTab === 'profile' && profile && (
           <>
-            <div style={{ background:'#fff', borderRadius:'18px', border:'1px solid hsl(38,14%,90%)', overflow:'hidden' }}>
-              <div style={{ padding:'20px', display:'flex', alignItems:'center', gap:'16px', borderBottom:'1px solid hsl(38,14%,92%)' }}>
-                <div style={{ width:56, height:56, borderRadius:'50%', background:getAvatarColor(profile.id), flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1rem', fontWeight:800, color:'#fff' }}>
-                  {getInitials(profile.name)}
-                </div>
+            <Card className="border border-border py-0 shadow-none">
+              <CardContent className="flex items-center gap-4 border-b border-border py-5">
+                <UserAvatar userId={profile.id} name={profile.name} size="lg" />
                 <div>
-                  <p style={{ fontSize:'1.05rem', fontWeight:800, color:'hsl(24,20%,11%)', lineHeight:1.2 }}>{profile.name}</p>
-                  <p style={{ fontSize:'0.72rem', color:'hsl(24,10%,52%)', marginTop:'2px', textTransform:'capitalize' }}>{profile.role}</p>
+                  <p className="text-lg font-extrabold text-foreground">{profile.name}</p>
+                  <p className="mt-0.5 text-xs capitalize text-muted-foreground">{profile.role}</p>
                 </div>
-              </div>
-              <div style={{ padding:'14px 20px', display:'flex', flexDirection:'column', gap:'10px' }}>
+              </CardContent>
+              <CardContent className="flex flex-col gap-3 py-4">
                 {[
-                  { label:'Email',  value: profile.email },
-                  { label:'Phone',  value: profile.phone ?? '—' },
-                  { label:'Joined', value: profile.joined_at ? new Date(profile.joined_at + 'T00:00:00').toLocaleDateString('en-US', { month:'long', year:'numeric' }) : '—' },
+                  { label: 'Email', value: profile.email },
+                  { label: 'Phone', value: profile.phone ?? '—' },
+                  {
+                    label: 'Joined',
+                    value: profile.joined_at
+                      ? new Date(`${profile.joined_at}T00:00:00`).toLocaleDateString('en-US', {
+                          month: 'long',
+                          year: 'numeric',
+                        })
+                      : '—',
+                  },
                 ].map(row => (
-                  <div key={row.label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                    <span style={{ fontSize:'0.72rem', color:'hsl(24,10%,52%)', fontWeight:600 }}>{row.label}</span>
-                    <span style={{ fontSize:'0.78rem', color:'hsl(24,20%,18%)', fontWeight:500 }}>{row.value}</span>
+                  <div key={row.label} className="flex items-center justify-between gap-4">
+                    <span className="text-xs font-semibold text-muted-foreground">{row.label}</span>
+                    <span className="text-sm text-foreground">{row.value}</span>
                   </div>
                 ))}
-              </div>
-            </div>
+              </CardContent>
+            </Card>
 
-            <div style={{ background:'#fff', borderRadius:'18px', border:'1px solid hsl(38,14%,90%)', overflow:'hidden' }}>
-              <p style={{ padding:'12px 16px 8px', fontSize:'0.6rem', fontWeight:700, color:'hsl(24,8%,60%)', textTransform:'uppercase', letterSpacing:'0.06em' }}>Account</p>
-              <button
-                onClick={handleLogout} disabled={loggingOut}
-                style={{ width:'100%', display:'flex', alignItems:'center', gap:'12px', padding:'14px 16px', background:'transparent', border:'none', cursor:'pointer', borderTop:'1px solid hsl(38,14%,92%)', transition:'background 0.12s' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'hsl(4,72%,97%)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <div style={{ width:34, height:34, borderRadius:'10px', background:'hsl(4,72%,95%)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="hsl(4,72%,52%)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-                <div style={{ flex:1, textAlign:'left' }}>
-                  <p style={{ fontSize:'0.82rem', fontWeight:700, color:'hsl(4,72%,40%)' }}>{loggingOut ? 'Signing out…' : 'Log Out'}</p>
-                  <p style={{ fontSize:'0.68rem', color:'hsl(24,10%,52%)' }}>Sign out of your account</p>
-                </div>
-              </button>
-            </div>
+            <Card className="border border-border py-0 shadow-none">
+              <CardContent className="py-3">
+                <p className="mb-2 text-[0.6rem] font-bold uppercase tracking-[0.06em] text-ghost">Account</p>
+                <Button
+                  variant="ghost"
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                  className="h-auto w-full justify-start gap-3 rounded-xl px-0 py-2 text-left hover:bg-danger/5"
+                >
+                  <div className="flex size-[34px] shrink-0 items-center justify-center rounded-[10px] bg-danger/10">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
+                        stroke="hsl(4,72%,52%)"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-danger">
+                      {loggingOut ? 'Signing out...' : 'Log Out'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Sign out of your account</p>
+                  </div>
+                </Button>
+              </CardContent>
+            </Card>
           </>
         )}
 
-        {/* ── Organisation tab ─────────────────────────────────────────────── */}
         {activeTab === 'organisation' && (
-          <div style={{ background:'#fff', borderRadius:'18px', border:'1px solid hsl(38,14%,90%)', overflow:'hidden' }}>
-            <p style={{ padding:'14px 20px 10px', fontSize:'0.6rem', fontWeight:700, color:'hsl(24,8%,60%)', textTransform:'uppercase', letterSpacing:'0.06em' }}>Agency details</p>
-            <div style={{ padding:'0 20px 20px', display:'flex', flexDirection:'column', gap:'14px' }}>
+          <Card className="border border-border py-0 shadow-none">
+            <CardContent className="flex flex-col gap-4 py-5">
+              <p className="text-[0.6rem] font-bold uppercase tracking-[0.06em] text-ghost">
+                Agency details
+              </p>
 
-              {/* Logo placeholder */}
-              <div style={{ display:'flex', alignItems:'center', gap:'16px' }}>
-                <div style={{ width:56, height:56, borderRadius:'14px', background:'hsl(38,14%,92%)', display:'flex', alignItems:'center', justifyContent:'center', border:'1.5px dashed hsl(38,14%,82%)' }}>
+              <div className="flex items-center gap-4">
+                <div className="flex size-14 items-center justify-center rounded-[14px] border border-dashed border-border bg-secondary">
                   {org?.logo_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={org.logo_url} alt="logo" style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:'12px' }} />
+                    <img
+                      src={org.logo_url}
+                      alt="logo"
+                      className="size-full rounded-xl object-cover"
+                    />
                   ) : (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <rect x="3" y="3" width="18" height="18" rx="4" stroke="hsl(24,8%,65%)" strokeWidth="1.5"/>
-                      <circle cx="8.5" cy="8.5" r="1.5" fill="hsl(24,8%,65%)"/>
-                      <path d="M21 15l-5-5L5 21" stroke="hsl(24,8%,65%)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      <rect x="3" y="3" width="18" height="18" rx="4" stroke="hsl(24,8%,65%)" strokeWidth="1.5" />
+                      <circle cx="8.5" cy="8.5" r="1.5" fill="hsl(24,8%,65%)" />
+                      <path d="M21 15l-5-5L5 21" stroke="hsl(24,8%,65%)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   )}
                 </div>
                 <div>
-                  <p style={{ fontSize:'0.8rem', fontWeight:700, color:'hsl(24,20%,18%)' }}>Agency logo</p>
-                  <p style={{ fontSize:'0.68rem', color:'hsl(24,8%,55%)', marginTop:'2px' }}>Logo upload coming soon</p>
+                  <p className="text-sm font-bold text-foreground">Agency logo</p>
+                  <p className="text-xs text-muted-foreground">Logo upload coming soon</p>
                 </div>
               </div>
 
-              {[
-                { label:'Agency name',    value:orgName,   set:setOrgName,   type:'text',   placeholder:'Your agency name' },
-                { label:'Workspace slug', value:orgSlug,   set:setOrgSlug,   type:'text',   placeholder:'your-agency' },
-              ].map(f => (
-                <div key={f.label} style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-                  <label style={{ fontSize:'0.72rem', fontWeight:600, color:'hsl(24,10%,44%)' }}>{f.label}</label>
-                  <input
-                    type={f.type} value={f.value} onChange={e => f.set(e.target.value)} placeholder={f.placeholder}
-                    className="w-full outline-none"
-                    style={{ padding:'11px 13px', borderRadius:'10px', background:'hsl(40,18%,95%)', border:'1.5px solid hsl(38,14%,88%)', fontSize:'0.85rem', color:'hsl(24,20%,11%)', fontWeight:500 }}
-                    onFocus={e => { e.target.style.borderColor = 'hsl(25,82%,60%)' }}
-                    onBlur={e => { e.target.style.borderColor = 'hsl(38,14%,88%)' }}
-                  />
-                </div>
-              ))}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Agency name</label>
+                <Input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Your agency name" className="bg-card" />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Workspace slug</label>
+                <Input value={orgSlug} onChange={e => setOrgSlug(e.target.value)} placeholder="your-agency" className="bg-card" />
+              </div>
 
               {orgMsg && (
-                <p style={{ fontSize:'0.73rem', color: orgMsg.startsWith('Failed') ? 'hsl(4,72%,50%)' : 'hsl(140,60%,40%)', fontWeight:600 }}>{orgMsg}</p>
+                <p className={cn('text-xs font-semibold', orgMsg.startsWith('Failed') ? 'text-danger' : 'text-success')}>
+                  {orgMsg}
+                </p>
               )}
 
-              <button
-                onClick={handleSaveOrg} disabled={orgSaving}
-                style={{ padding:'12px', borderRadius:'9999px', background:'hsl(25,82%,60%)', color:'white', fontWeight:700, fontSize:'0.85rem', border:'none', cursor:orgSaving ? 'not-allowed' : 'pointer', opacity: orgSaving ? 0.75 : 1, boxShadow:'0 5px 18px hsl(25,82%,60%, 0.35)' }}
+              <Button
+                onClick={handleSaveOrg}
+                disabled={orgSaving}
+                className="rounded-full bg-coral text-white hover:bg-coral/85"
               >
-                {orgSaving ? 'Saving…' : 'Save changes'}
-              </button>
+                {orgSaving ? 'Saving...' : 'Save changes'}
+              </Button>
 
-              {/* Plan info */}
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 14px', borderRadius:'12px', background:'hsl(42,30%,97%)', border:'1px solid hsl(38,14%,92%)' }}>
+              <div className="flex items-center justify-between rounded-xl border border-border bg-secondary/40 px-4 py-3">
                 <div>
-                  <p style={{ fontSize:'0.72rem', fontWeight:600, color:'hsl(24,8%,55%)' }}>Current plan</p>
-                  <p style={{ fontSize:'0.85rem', fontWeight:800, color:'hsl(24,20%,11%)', textTransform:'capitalize' }}>{org?.plan ?? '—'}</p>
+                  <p className="text-xs font-semibold text-muted-foreground">Current plan</p>
+                  <p className="text-sm font-extrabold capitalize text-foreground">{org?.plan ?? '—'}</p>
                 </div>
-                <Link href="/settings/billing" style={{ padding:'7px 14px', borderRadius:'9999px', background:'hsl(25,82%,60%)', color:'white', fontWeight:700, fontSize:'0.7rem', textDecoration:'none' }}>
+                <Link
+                  href="/settings/billing"
+                  className="rounded-full bg-coral px-4 py-2 text-xs font-bold text-white"
+                >
                   Manage billing
                 </Link>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         )}
 
-        {/* ── Team tab ─────────────────────────────────────────────────────── */}
         {activeTab === 'team' && (
-          <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <p style={{ fontSize:'0.72rem', color:'hsl(24,8%,52%)', fontWeight:500 }}>{members.length} member{members.length !== 1 ? 's' : ''}</p>
-              <button
-                onClick={() => setShowInvite(true)}
-                style={{ display:'flex', alignItems:'center', gap:'6px', padding:'8px 14px', borderRadius:'9999px', background:'hsl(25,82%,60%)', color:'white', fontWeight:700, fontSize:'0.72rem', border:'none', cursor:'pointer', boxShadow:'0 4px 14px hsl(25,82%,60%, 0.35)' }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="white" strokeWidth="2.5" strokeLinecap="round"/></svg>
-                Invite member
-              </button>
-            </div>
-
-            <div style={{ background:'#fff', borderRadius:'18px', border:'1px solid hsl(38,14%,90%)', overflow:'hidden' }}>
-              {members.length === 0 ? (
-                <div style={{ padding:'32px', textAlign:'center', color:'hsl(24,8%,55%)', fontSize:'0.82rem' }}>
-                  No team members yet. Invite your first teammate!
-                </div>
-              ) : (
-                members.map((m, i) => (
-                  <div key={m.id} style={{ display:'flex', alignItems:'center', gap:'12px', padding:'14px 16px', borderBottom: i < members.length - 1 ? '1px solid hsl(38,14%,92%)' : 'none' }}>
-                    <div style={{ width:36, height:36, borderRadius:'50%', background:getAvatarColor(m.id), flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.6rem', fontWeight:800, color:'#fff' }}>
-                      {getInitials(m.name)}
-                    </div>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <p style={{ fontSize:'0.82rem', fontWeight:700, color:'hsl(24,20%,11%)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.name}</p>
-                      <p style={{ fontSize:'0.68rem', color:'hsl(24,8%,52%)' }}>{m.email}</p>
-                    </div>
-                    <div style={{ display:'flex', alignItems:'center', gap:'8px', flexShrink:0 }}>
-                      <span style={{ padding:'3px 10px', borderRadius:'9999px', background:'hsl(42,30%,94%)', color:'hsl(24,15%,35%)', fontSize:'0.62rem', fontWeight:700, textTransform:'capitalize' }}>
-                        {m.role}
-                      </span>
-                      {!m.active && (
-                        <span style={{ padding:'3px 8px', borderRadius:'9999px', background:'hsl(4,60%,95%)', color:'hsl(4,60%,45%)', fontSize:'0.58rem', fontWeight:700 }}>
-                          Inactive
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ── Billing tab ──────────────────────────────────────────────────── */}
-        {activeTab === 'billing' && (
-          <div style={{ background:'#fff', borderRadius:'18px', border:'1px solid hsl(38,14%,90%)', padding:'24px', display:'flex', flexDirection:'column', gap:'16px', alignItems:'center', textAlign:'center' }}>
-            <div style={{ width:56, height:56, borderRadius:'16px', background:'hsl(200,60%,94%)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <rect x="2" y="6" width="20" height="14" rx="3" stroke="hsl(200,72%,50%)" strokeWidth="1.8"/>
-                <path d="M2 10h20M6 14h4M16 14h2" stroke="hsl(200,72%,50%)" strokeWidth="1.8" strokeLinecap="round"/>
-              </svg>
-            </div>
-            <div>
-              <p style={{ fontSize:'0.9rem', fontWeight:800, color:'hsl(24,20%,11%)' }}>Billing & Plans</p>
-              <p style={{ fontSize:'0.75rem', color:'hsl(24,8%,52%)', marginTop:'4px', lineHeight:1.6 }}>
-                View your current plan, compare features,<br/>and manage your subscription.
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                {members.length} member{members.length !== 1 ? 's' : ''}
               </p>
+              <Button
+                onClick={() => setShowInvite(true)}
+                className="rounded-full bg-coral text-white hover:bg-coral/85"
+              >
+                Invite member
+              </Button>
             </div>
-            <Link
-              href="/settings/billing"
-              style={{ padding:'12px 28px', borderRadius:'9999px', background:'hsl(25,82%,60%)', color:'white', fontWeight:700, fontSize:'0.82rem', textDecoration:'none', boxShadow:'0 5px 18px hsl(25,82%,60%, 0.35)' }}
-            >
-              Go to Billing
-            </Link>
+
+            <Card className="border border-border py-0 shadow-none">
+              <CardContent className="py-0">
+                {members.length === 0 ? (
+                  <div className="py-10 text-center text-sm text-muted-foreground">
+                    No team members yet. Invite your first teammate.
+                  </div>
+                ) : (
+                  members.map((m, i) => (
+                    <div
+                      key={m.id}
+                      className={cn(
+                        'flex items-center gap-3 py-4',
+                        i < members.length - 1 && 'border-b border-border'
+                      )}
+                    >
+                      <UserAvatar userId={m.id} name={m.name} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold text-foreground">{m.name}</p>
+                        <p className="text-xs text-muted-foreground">{m.email}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge className="border-0 bg-secondary text-xs font-bold capitalize text-foreground">
+                          {m.role}
+                        </Badge>
+                        {!m.active && (
+                          <Badge className="border-0 bg-danger/10 text-[0.58rem] font-bold text-danger">
+                            Inactive
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
 
-        <div style={{ textAlign:'center', padding:'8px', color:'hsl(24,8%,64%)', fontSize:'0.65rem' }}>
-          AgencyOS · v2.0
-        </div>
+        {activeTab === 'billing' && (
+          <Card className="border border-border py-0 shadow-none">
+            <CardContent className="flex flex-col items-center gap-4 py-8 text-center">
+              <div className="flex size-14 items-center justify-center rounded-2xl bg-sky/10">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <rect x="2" y="6" width="20" height="14" rx="3" stroke="hsl(200,72%,50%)" strokeWidth="1.8" />
+                  <path d="M2 10h20M6 14h4M16 14h2" stroke="hsl(200,72%,50%)" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-base font-extrabold text-foreground">Billing & Plans</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  View your current plan, compare features, and manage your subscription.
+                </p>
+              </div>
+              <Link
+                href="/settings/billing"
+                className="rounded-full bg-coral px-7 py-3 text-sm font-bold text-white"
+              >
+                Go to Billing
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="py-2 text-center text-[0.65rem] text-ghost">AgencyOS · v2.0</div>
       </div>
     </main>
   )

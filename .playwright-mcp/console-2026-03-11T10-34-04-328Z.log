@@ -1,0 +1,8 @@
+[     478ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[     627ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[   49459ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[   53087ms] [WARNING] The resource http://localhost:3000/_next/static/media/fa0520225c6f3d07-s.p.d28ba1c8.woff2 was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally. @ http://localhost:3000/team:0
+[  297475ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[  301559ms] [WARNING] The resource http://localhost:3000/_next/static/media/fa0520225c6f3d07-s.p.d28ba1c8.woff2 was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally. @ http://localhost:3000/audit:0
+[  402508ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[  406340ms] [WARNING] The resource http://localhost:3000/_next/static/media/fa0520225c6f3d07-s.p.d28ba1c8.woff2 was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally. @ http://localhost:3000/analytics:0

@@ -3,6 +3,11 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useOrg } from '@/lib/supabase/OrgContext'
+import {
+  Dialog,
+  DialogContent,
+  DialogClose,
+} from '@/components/ui/dialog'
 
 type NewClient = {
   name: string
@@ -90,9 +95,11 @@ export default function AddClientModal({ onClose, onCreated }: {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center md:items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col">
-
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-lg max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden rounded-2xl ring-0 bg-white"
+      >
         <div className="h-1.5 shrink-0" style={{ background: form.brand_color }} />
 
         <div className="overflow-y-auto flex-1">
@@ -104,10 +111,9 @@ export default function AddClientModal({ onClose, onCreated }: {
                 <p className="text-xs text-stone-400 uppercase tracking-widest font-semibold">Clients</p>
                 <h2 className="text-lg font-extrabold text-stone-800">Add New Client</h2>
               </div>
-              <button type="button" onClick={onClose}
-                className="w-8 h-8 rounded-lg bg-stone-100 text-stone-500 hover:bg-stone-200 transition-colors flex items-center justify-center text-lg">
+              <DialogClose className="w-8 h-8 rounded-lg bg-stone-100 text-stone-500 hover:bg-stone-200 transition-colors flex items-center justify-center text-lg">
                 ×
-              </button>
+              </DialogClose>
             </div>
 
             {/* Name */}
@@ -248,10 +254,12 @@ export default function AddClientModal({ onClose, onCreated }: {
             )}
 
             <div className="flex gap-3">
-              <button type="button" onClick={onClose}
-                className="flex-1 py-3 rounded-xl border border-stone-200 text-sm font-semibold text-stone-500 hover:bg-stone-50 transition-colors">
+              <DialogClose
+                type="button"
+                className="flex-1 py-3 rounded-xl border border-stone-200 text-sm font-semibold text-stone-500 hover:bg-stone-50 transition-colors"
+              >
                 Cancel
-              </button>
+              </DialogClose>
               <button
                 type="submit" disabled={loading}
                 className="flex-[2] py-3 rounded-xl text-sm font-bold text-white transition-opacity disabled:opacity-50"
@@ -262,7 +270,7 @@ export default function AddClientModal({ onClose, onCreated }: {
             </div>
           </form>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

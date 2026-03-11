@@ -1,26 +1,32 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
+
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
 import type { ContentType } from '@/lib/types'
+import { cn } from '@/lib/utils'
 
 gsap.registerPlugin(useGSAP)
 
 type ClientRow = { id: string; name: string; initials: string; brand_color: string; content_this_month: number }
 type ContentRow = { id: string; title: string; type: string; status: string; client_id: string; scheduled_date: string }
 
-const TYPE_CFG: Record<ContentType, { bg: string; text: string; label: string }> = {
-  graphic: { bg: 'hsl(14,72%,62%)',  text: '#fff',    label: 'Graphic' },
-  video:   { bg: 'hsl(40,95%,62%)',  text: '#3a2800', label: 'Video'   },
-  reel:    { bg: 'hsl(161,58%,50%)', text: '#fff',    label: 'Reel'    },
-  story:   { bg: 'hsl(268,60%,68%)', text: '#fff',    label: 'Story'   },
+const TYPE_CFG: Record<ContentType, { bg: string; text: string; label: string; chip: string }> = {
+  graphic: { bg: 'hsl(14 72% 62%)', text: '#fff', label: 'Graphic', chip: 'bg-coral/12 text-coral' },
+  video: { bg: 'hsl(40 95% 62%)', text: '#3a2800', label: 'Video', chip: 'bg-lemon/20 text-foreground' },
+  reel: { bg: 'hsl(161 58% 50%)', text: '#fff', label: 'Reel', chip: 'bg-mint/12 text-mint' },
+  story: { bg: 'hsl(268 60% 68%)', text: '#fff', label: 'Story', chip: 'bg-lavender/14 text-lavender' },
 }
 
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
-const DAYS = ['M','T','W','T','F','S','S']
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
 function buildMiniGrid(year: number, month: number) {
   const firstDow = new Date(year, month, 1).getDay()
@@ -35,74 +41,83 @@ function buildMiniGrid(year: number, month: number) {
 }
 
 function dkey(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 function monthRange(year: number, month: number) {
   const mm = String(month + 1).padStart(2, '0')
   const last = new Date(year, month + 1, 0).getDate()
-  return { start: `${year}-${mm}-01`, end: `${year}-${mm}-${String(last).padStart(2,'0')}` }
+  return { start: `${year}-${mm}-01`, end: `${year}-${mm}-${String(last).padStart(2, '0')}` }
+}
+
+function styleVars(vars: Record<string, string | number>): CSSProperties {
+  return vars as CSSProperties
 }
 
 export default function PlanningPage() {
   const router = useRouter()
   const supabase = createClient()
-  const today  = new Date()
+  const today = new Date()
   const quotaRef = useRef<HTMLDivElement>(null)
 
-  const [mounted,     setMounted]     = useState(false)
-  const [clients,     setClients]     = useState<ClientRow[]>([])
+  const [clients, setClients] = useState<ClientRow[]>([])
   const [contentPieces, setContentPieces] = useState<ContentRow[]>([])
-  const [viewMonth,   setViewMonth]   = useState(today.getMonth())
-  const [viewYear,    setViewYear]    = useState(today.getFullYear())
+  const [viewMonth, setViewMonth] = useState(today.getMonth())
+  const [viewYear, setViewYear] = useState(today.getFullYear())
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
-  const [addClient,   setAddClient]   = useState('')
-  const [addType,     setAddType]     = useState<ContentType>('graphic')
-  const [addTitle,    setAddTitle]    = useState('')
+  const [addClient, setAddClient] = useState('')
+  const [addType, setAddType] = useState<ContentType>('graphic')
+  const [addTitle, setAddTitle] = useState('')
 
-  // Load clients once
   useEffect(() => {
-    supabase.from('clients').select('id, name, initials, brand_color, content_this_month').order('name')
+    supabase
+      .from('clients')
+      .select('id, name, initials, brand_color, content_this_month')
+      .order('name')
       .then(({ data }) => {
         if (data) {
           setClients(data)
           if (data[0] && !addClient) setAddClient(data[0].id)
         }
       })
-    setMounted(true)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [addClient, supabase])
 
-  // Load content for current month
   useEffect(() => {
     const { start, end } = monthRange(viewYear, viewMonth)
-    supabase.from('content_pieces')
+    supabase
+      .from('content_pieces')
       .select('id, title, type, status, client_id, scheduled_date')
       .gte('scheduled_date', start)
       .lte('scheduled_date', end)
-      .then(({ data }) => { if (data) setContentPieces(data) })
-  }, [viewYear, viewMonth]) // eslint-disable-line react-hooks/exhaustive-deps
+      .then(({ data }) => {
+        if (data) setContentPieces(data)
+      })
+  }, [supabase, viewYear, viewMonth])
 
-  useGSAP(() => {
-    if (!mounted || !quotaRef.current) return
-    gsap.fromTo('.quota-card',
-      { y: 20, opacity: 0 },
-      { y: 0, opacity: 1, duration: 0.4, stagger: 0.08, ease: 'back.out(1.3)', clearProps: 'all' }
-    )
-  }, { dependencies: [mounted, clients.length], scope: quotaRef })
+  useGSAP(
+    () => {
+      if (!quotaRef.current) return
+      gsap.fromTo(
+        '[data-animate="quota-card"]',
+        { y: 20, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.4, stagger: 0.08, ease: 'back.out(1.3)', clearProps: 'all' }
+      )
+    },
+    { dependencies: [clients.length], scope: quotaRef }
+  )
 
   const miniCells = buildMiniGrid(viewYear, viewMonth)
 
-  // Per-client quota stats for this month
   const clientQuotas = clients.map(client => {
     const monthContent = contentPieces.filter(c => c.client_id === client.id)
     const byType: Record<ContentType, number> = { graphic: 0, video: 0, reel: 0, story: 0 }
-    monthContent.forEach(c => { byType[c.type as ContentType]++ })
+    monthContent.forEach(c => {
+      byType[c.type as ContentType]++
+    })
     return { client, target: client.content_this_month, planned: monthContent.length, byType }
   })
 
-  // Content dots per day
   const contentByDay = new Map<number, ContentRow[]>()
   contentPieces.forEach(c => {
     const day = parseInt(c.scheduled_date.slice(8, 10), 10)
@@ -110,16 +125,14 @@ export default function PlanningPage() {
     contentByDay.get(day)!.push(c)
   })
 
-  // Selected day content
-  const dayContent = selectedDay
-    ? contentPieces.filter(c => c.scheduled_date === dkey(selectedDay))
-    : []
+  const dayContent = selectedDay ? contentPieces.filter(c => c.scheduled_date === dkey(selectedDay)) : []
 
   function navigate(dir: number) {
     const d = new Date(viewYear, viewMonth + dir)
     setViewMonth(d.getMonth())
     setViewYear(d.getFullYear())
     setSelectedDay(null)
+    setShowAddForm(false)
   }
 
   function selectDay(day: number) {
@@ -132,40 +145,33 @@ export default function PlanningPage() {
     if (contentId) {
       router.push(`/brief/${contentId}`)
     } else if (selectedDay) {
-      const dateStr = dkey(selectedDay)
-      router.push(`/brief/new?date=${dateStr}&client=${addClient}&type=${addType}&title=${encodeURIComponent(addTitle)}`)
+      router.push(`/brief/new?date=${dkey(selectedDay)}&client=${addClient}&type=${addType}&title=${encodeURIComponent(addTitle)}`)
     }
   }
 
-  if (!mounted) return null
-
   const totalPlanned = clientQuotas.reduce((a, q) => a + q.planned, 0)
-  const totalTarget  = clientQuotas.reduce((a, q) => a + q.target, 0)
+  const totalTarget = clientQuotas.reduce((a, q) => a + q.target, 0)
 
   return (
-    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-
-      {/* ── Hero ──────────────────────────────────────────────────────────── */}
-      <div style={{ background: '#0F1A14', padding: '18px 20px 16px', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: '0.656rem', color: 'hsl(140,7%,48%)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '1px' }}>Content</p>
-            <h1 style={{ fontSize: '1.167rem', fontWeight: 800, color: 'hsl(42,22%,84%)', lineHeight: 1 }}>Planning</h1>
+    <main className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">
+      <div className="bg-foreground px-5 py-[18px] pb-4 text-background">
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <p className="mb-px text-[0.656rem] uppercase tracking-[0.08em] text-background/50">Content</p>
+            <h1 className="text-[1.167rem] font-extrabold leading-none">Planning</h1>
           </div>
 
-          {/* Progress ring */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div className="flex items-center gap-3">
             <ProgressRing value={totalPlanned} total={totalTarget} />
             <div>
-              <p style={{ fontSize: '1rem', fontWeight: 800, color: 'hsl(25,82%,60%)', lineHeight: 1 }}>{totalPlanned}/{totalTarget}</p>
-              <p style={{ fontSize: '0.6rem', color: 'hsl(140,7%,48%)', marginTop: '2px' }}>posts planned</p>
+              <p className="text-base font-extrabold leading-none text-coral">{totalPlanned}/{totalTarget}</p>
+              <p className="mt-0.5 text-[0.6rem] text-background/50">posts planned</p>
             </div>
           </div>
 
-          {/* Month nav */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div className="flex items-center gap-1.5">
             <NavBtn onClick={() => navigate(-1)}>‹</NavBtn>
-            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'hsl(42,22%,84%)', minWidth: '100px', textAlign: 'center' }}>
+            <span className="min-w-25 text-center text-[0.8rem] font-bold text-background">
               {MONTHS[viewMonth].slice(0, 3)} {viewYear}
             </span>
             <NavBtn onClick={() => navigate(1)}>›</NavBtn>
@@ -173,340 +179,226 @@ export default function PlanningPage() {
         </div>
       </div>
 
-      {/* ── Main content ──────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0' }}>
-        <div className="planning-layout" style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          <style>{`
-            .planning-layout { flex-direction: column; }
-            @media(min-width:768px) { .planning-layout { flex-direction: row !important; } }
-          `}</style>
+      <div className="flex flex-1 flex-col md:flex-row">
+        <div
+          ref={quotaRef}
+          className="max-h-65 flex-[0_0_auto] overflow-y-auto border-b border-border p-4 md:max-h-none md:w-[300px] md:border-r md:border-b-0"
+        >
+          <p className="mb-2.5 text-[0.75rem] font-bold text-foreground">Client Quotas</p>
 
-          {/* ── Left: Client Quotas ────────────────────────────────────────── */}
-          <div
-            ref={quotaRef}
-            style={{ padding: '16px', overflowY: 'auto', flex: '0 0 auto' }}
-            className="quota-panel"
-          >
-            <style>{`
-              .quota-panel { max-height: 260px; }
-              @media(min-width:768px) { .quota-panel { width: 300px; max-height: none !important; border-right: 1px solid hsl(38,14%,90%); } }
-            `}</style>
-            <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'hsl(24,20%,11%)', marginBottom: '10px' }}>Client Quotas</p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {clientQuotas.map(({ client, target, planned, byType }) => {
-                const pct = target > 0 ? Math.round((planned / target) * 100) : 0
-                const isFull = planned >= target
-                return (
-                  <div
-                    key={client.id}
-                    className="quota-card"
-                    style={{
-                      background: 'hsl(42,25%,99%)',
-                      borderRadius: '14px',
-                      padding: '14px',
-                      border: `1px solid ${isFull ? 'hsl(154,45%,80%)' : 'hsl(38,14%,90%)'}`,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                      <div style={{
-                        width: '32px', height: '32px', borderRadius: '8px',
-                        background: client.brand_color,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontWeight: 800, fontSize: '11px', color: '#fff', flexShrink: 0,
-                      }}>
+          <div className="flex flex-col gap-2.5">
+            {clientQuotas.map(({ client, target, planned, byType }) => {
+              const pct = target > 0 ? Math.round((planned / target) * 100) : 0
+              const isFull = planned >= target
+              return (
+                <Card
+                  key={client.id}
+                  data-animate="quota-card"
+                  className={cn('bg-amber-50/40 py-0 shadow-none', isFull ? 'border-success/30' : 'border-border')}
+                  style={styleVars({ '--client-color': client.brand_color, '--quota-width': `${Math.min(pct, 100)}%` })}
+                >
+                  <CardContent className="px-3.5 py-3.5">
+                    <div className="mb-2.5 flex items-center gap-2.5">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[var(--client-color)] text-[11px] font-extrabold text-white">
                         {client.initials}
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <p style={{ fontSize: '0.8rem', fontWeight: 700, color: 'hsl(24,20%,11%)', lineHeight: 1.2 }}>{client.name}</p>
-                        <p style={{ fontSize: '0.656rem', color: 'hsl(24,10%,54%)' }}>{planned} of {target} planned</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[0.8rem] font-bold leading-tight text-foreground">{client.name}</p>
+                        <p className="text-[0.656rem] text-muted-foreground">{planned} of {target} planned</p>
                       </div>
-                      <span style={{
-                        fontSize: '0.75rem', fontWeight: 800,
-                        color: isFull ? 'hsl(154,50%,40%)' : pct > 50 ? 'hsl(25,82%,60%)' : 'hsl(24,10%,44%)',
-                      }}>
-                        {pct}%
-                      </span>
+                      <span className={cn('text-[0.75rem] font-extrabold', isFull ? 'text-success' : 'text-foreground')}>{pct}%</span>
                     </div>
 
-                    <div style={{ height: '6px', borderRadius: '99px', background: 'hsl(42,18%,93%)', overflow: 'hidden', marginBottom: '8px' }}>
-                      <div style={{
-                        height: '100%', width: `${Math.min(pct, 100)}%`,
-                        borderRadius: '99px',
-                        background: isFull ? 'hsl(154,50%,40%)' : client.brand_color,
-                        transition: 'width 0.6s cubic-bezier(0.34,1.56,0.64,1)',
-                      }} />
+                    <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div className={cn('h-full w-[var(--quota-width)] rounded-full transition-[width] duration-500', isFull ? 'bg-success' : 'bg-[var(--client-color)]')} />
                     </div>
 
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    <div className="flex flex-wrap gap-1.5">
                       {(Object.entries(byType) as [ContentType, number][]).map(([t, n]) => (
-                        <div key={t} style={{
-                          display: 'flex', alignItems: 'center', gap: '4px',
-                          padding: '2px 7px', borderRadius: '99px',
-                          background: n > 0 ? `${TYPE_CFG[t].bg}20` : 'hsl(42,15%,94%)',
-                        }}>
-                          <div style={{ width: '6px', height: '6px', borderRadius: '2px', background: TYPE_CFG[t].bg }} />
-                          <span style={{ fontSize: '0.6rem', fontWeight: 600, color: n > 0 ? 'hsl(24,20%,11%)' : 'hsl(24,8%,64%)' }}>
-                            {n}
-                          </span>
-                        </div>
+                        <span key={t} className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6rem] font-semibold', n > 0 ? TYPE_CFG[t].chip : 'bg-muted text-muted-foreground')}>
+                          <span className="size-1.5 rounded-[2px] bg-[color:var(--type-color)]" style={styleVars({ '--type-color': TYPE_CFG[t].bg })} />
+                          {n}
+                        </span>
                       ))}
                     </div>
-                  </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col overflow-auto p-4">
+          <div className="mb-4 max-w-[320px]">
+            <div className="mb-1 grid grid-cols-7 gap-0.5">
+              {DAYS.map((d, i) => (
+                <div key={`${d}-${i}`} className="py-1 text-center text-[0.6rem] font-bold text-muted-foreground">
+                  {d}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-0.5">
+              {miniCells.map((cell, i) => {
+                if (!cell.inMonth) return <div key={i} className="aspect-square max-h-10 rounded-lg" />
+                const isToday = cell.day === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear()
+                const isSelected = selectedDay?.getDate() === cell.day && selectedDay?.getMonth() === viewMonth && selectedDay?.getFullYear() === viewYear
+                const dayPieces = contentByDay.get(cell.day) || []
+                const dayDate = new Date(viewYear, viewMonth, cell.day)
+                const isPast = dayDate < new Date(today.getFullYear(), today.getMonth(), today.getDate()) && !isToday
+
+                return (
+                  <button
+                    key={i}
+                    onClick={() => selectDay(cell.day)}
+                    className={cn(
+                      'flex aspect-square max-h-10 flex-col items-center justify-center gap-0.5 rounded-lg border-2 bg-amber-50/40 transition-colors',
+                      isSelected ? 'border-coral bg-coral/10' : isToday ? 'border-sky' : 'border-transparent',
+                      isPast && 'opacity-45'
+                    )}
+                  >
+                    <span className={cn('text-[0.7rem] leading-none', isSelected || isToday ? 'font-extrabold' : 'font-medium', isSelected ? 'text-coral' : isToday ? 'text-sky' : 'text-foreground')}>
+                      {cell.day}
+                    </span>
+                    {dayPieces.length > 0 && (
+                      <div className="flex gap-0.5">
+                        {dayPieces.slice(0, 3).map((cp, j) => (
+                          <div key={j} className="size-1 rounded-full bg-[color:var(--dot-color)]" style={styleVars({ '--dot-color': TYPE_CFG[cp.type as ContentType]?.bg ?? 'hsl(24 10% 60%)' })} />
+                        ))}
+                      </div>
+                    )}
+                  </button>
                 )
               })}
             </div>
           </div>
 
-          {/* ── Right: Mini Calendar + Day Drawer ──────────────────────────── */}
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'auto', padding: '16px' }}>
-
-            {/* Mini Calendar */}
-            <div style={{ marginBottom: '16px', maxWidth: '320px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '4px' }}>
-                {DAYS.map((d, i) => (
-                  <div key={i} style={{ textAlign: 'center', fontSize: '0.6rem', fontWeight: 700, color: 'hsl(24,10%,44%)', padding: '4px 0' }}>{d}</div>
-                ))}
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
-                {miniCells.map((cell, i) => {
-                  if (!cell.inMonth) return <div key={i} style={{ aspectRatio: '1', borderRadius: '8px', maxHeight: '40px' }} />
-                  const isToday = cell.day === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear()
-                  const isSelected = selectedDay?.getDate() === cell.day && selectedDay?.getMonth() === viewMonth
-                  const dayPieces = contentByDay.get(cell.day) || []
-                  const isPast = new Date(viewYear, viewMonth, cell.day) < today && !isToday
-
-                  return (
-                    <button
-                      key={i}
-                      onClick={() => selectDay(cell.day)}
-                      style={{
-                        aspectRatio: '1',
-                        maxHeight: '40px',
-                        borderRadius: '8px',
-                        border: isSelected ? '2px solid hsl(25,82%,60%)' : isToday ? '2px solid hsl(200,82%,58%)' : '2px solid transparent',
-                        background: isSelected ? 'rgba(209,101,39,0.1)' : 'hsl(42,25%,99%)',
-                        cursor: 'pointer',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px',
-                        opacity: isPast ? 0.45 : 1,
-                        transition: 'border-color 0.12s, background 0.12s',
-                      }}
-                    >
-                      <span style={{
-                        fontSize: '0.7rem',
-                        fontWeight: isToday || isSelected ? 800 : 500,
-                        color: isSelected ? 'hsl(25,82%,60%)' : isToday ? 'hsl(200,82%,58%)' : 'hsl(24,20%,11%)',
-                        lineHeight: 1,
-                      }}>
-                        {cell.day}
-                      </span>
-                      {dayPieces.length > 0 && (
-                        <div style={{ display: 'flex', gap: '2px' }}>
-                          {dayPieces.slice(0, 3).map((cp, j) => (
-                            <div key={j} style={{ width: '4px', height: '4px', borderRadius: '50%', background: TYPE_CFG[cp.type as ContentType]?.bg ?? 'hsl(24,10%,60%)' }} />
-                          ))}
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* ── Day Drawer ─────────────────────────────────────────────────── */}
-            {selectedDay ? (
-              <div style={{
-                flex: 1,
-                background: 'hsl(42,25%,99%)',
-                borderRadius: '16px',
-                border: '1px solid hsl(38,14%,90%)',
-                padding: '16px',
-                display: 'flex', flexDirection: 'column',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+          {selectedDay ? (
+            <Card className="flex flex-1 flex-col py-0 shadow-none">
+              <CardContent className="flex flex-1 flex-col px-4 py-4">
+                <div className="mb-3 flex items-center justify-between">
                   <div>
-                    <p style={{ fontSize: '1rem', fontWeight: 800, color: 'hsl(24,20%,11%)', lineHeight: 1.2 }}>
+                    <p className="text-base font-extrabold leading-tight text-foreground">
                       {selectedDay.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                     </p>
-                    <p style={{ fontSize: '0.75rem', color: 'hsl(24,10%,54%)', marginTop: '2px' }}>
+                    <p className="mt-0.5 text-[0.75rem] text-muted-foreground">
                       {dayContent.length} post{dayContent.length !== 1 ? 's' : ''} planned
                     </p>
                   </div>
-                  <button
-                    onClick={() => router.push(`/calendar/${dkey(selectedDay)}`)}
-                    style={{
-                      padding: '5px 10px', borderRadius: '8px',
-                      background: 'hsl(42,18%,93%)', border: 'none',
-                      fontSize: '0.75rem', fontWeight: 600, color: 'hsl(24,10%,44%)', cursor: 'pointer',
-                    }}
-                  >
-                    Day View →
-                  </button>
+                  <Button variant="outline" size="sm" onClick={() => router.push(`/calendar/${dkey(selectedDay)}`)}>
+                    Day View
+                  </Button>
                 </div>
 
                 {dayContent.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                  <div className="mb-3 flex flex-col gap-1.5">
                     {dayContent.map(cp => {
                       const client = clients.find(c => c.id === cp.client_id)
                       const cfg = TYPE_CFG[cp.type as ContentType] ?? TYPE_CFG.graphic
                       return (
-                        <div
+                        <button
                           key={cp.id}
                           onClick={() => goToBrief(cp.id)}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: '10px',
-                            padding: '10px 12px', borderRadius: '10px',
-                            background: `${cfg.bg}12`,
-                            border: `1px solid ${cfg.bg}30`,
-                            cursor: 'pointer',
-                            transition: 'transform 0.12s ease',
-                          }}
-                          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateX(4px)' }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = '' }}
+                          className="flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-transform hover:translate-x-1"
+                          style={styleVars({ '--type-color': cfg.bg })}
                         >
-                          <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: cfg.bg, flexShrink: 0 }} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'hsl(24,20%,11%)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cp.title}</p>
-                            <p style={{ fontSize: '0.656rem', color: 'hsl(24,10%,54%)' }}>{client?.name} · {cfg.label}</p>
+                          <div className="size-2 shrink-0 rounded-[2px] bg-[var(--type-color)]" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[0.8rem] font-semibold leading-tight text-foreground">{cp.title}</p>
+                            <p className="text-[0.656rem] text-muted-foreground">{client?.name} · {cfg.label}</p>
                           </div>
-                          <span style={{
-                            fontSize: '0.6rem', fontWeight: 600,
-                            padding: '2px 7px', borderRadius: '99px',
-                            background: cp.status === 'overdue' ? 'hsl(4,78%,93%)' : 'hsl(42,18%,93%)',
-                            color: cp.status === 'overdue' ? 'hsl(4,72%,38%)' : 'hsl(24,10%,44%)',
-                            textTransform: 'capitalize', whiteSpace: 'nowrap',
-                          }}>
+                          <Badge variant="outline" className="capitalize">
                             {cp.status.replace(/-/g, ' ')}
-                          </span>
-                        </div>
+                          </Badge>
+                        </button>
                       )
                     })}
                   </div>
                 )}
 
-                {/* Add content section */}
                 {!showAddForm ? (
                   <button
                     onClick={() => setShowAddForm(true)}
-                    style={{
-                      padding: '12px', borderRadius: '10px',
-                      border: '1.5px dashed rgba(209,101,39,0.4)',
-                      background: 'rgba(209,101,39,0.04)',
-                      cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                      transition: 'border-color 0.15s, background 0.15s',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'hsl(25,82%,60%)'; e.currentTarget.style.background = 'rgba(209,101,39,0.08)' }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(209,101,39,0.4)'; e.currentTarget.style.background = 'rgba(209,101,39,0.04)' }}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-coral/40 bg-coral/5 px-3 py-3 text-coral transition-colors hover:bg-coral/10"
                   >
-                    <span style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'hsl(25,82%,60%)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700 }}>+</span>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'hsl(25,82%,60%)' }}>Add Content</span>
+                    <span className="flex size-5 items-center justify-center rounded-full bg-coral text-sm font-bold text-white">+</span>
+                    <span className="text-[0.8rem] font-semibold">Add Content</span>
                   </button>
                 ) : (
-                  <div style={{
-                    padding: '14px', borderRadius: '12px',
-                    background: 'hsl(42,18%,96%)',
-                    border: '1px solid hsl(38,14%,90%)',
-                    display: 'flex', flexDirection: 'column', gap: '12px',
-                  }}>
-                    {/* Client */}
-                    <div>
-                      <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'hsl(24,20%,11%)', marginBottom: '6px' }}>Client</p>
-                      <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                        {clients.map(c => (
-                          <button key={c.id} onClick={() => setAddClient(c.id)} style={{
-                            padding: '5px 10px', borderRadius: '99px', border: 'none', cursor: 'pointer',
-                            background: addClient === c.id ? c.brand_color : 'hsl(42,25%,99%)',
-                            color: addClient === c.id ? '#fff' : 'hsl(24,20%,11%)',
-                            fontSize: '0.7rem', fontWeight: 600, transition: 'background 0.12s',
-                          }}>
-                            {c.name}
-                          </button>
-                        ))}
+                  <Card className="bg-muted/30 py-0 shadow-none">
+                    <CardContent className="flex flex-col gap-3 px-3.5 py-3.5">
+                      <div>
+                        <p className="mb-1.5 text-[0.7rem] font-bold text-foreground">Client</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {clients.map(c => (
+                            <button
+                              key={c.id}
+                              onClick={() => setAddClient(c.id)}
+                              className={cn(
+                                'rounded-full px-2.5 py-1 text-[0.7rem] font-semibold transition-colors',
+                                addClient === c.id ? 'text-white' : 'bg-card text-foreground'
+                              )}
+                              style={addClient === c.id ? styleVars({ '--client-color': c.brand_color, background: 'var(--client-color)' }) : undefined}
+                            >
+                              {c.name}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Type */}
-                    <div>
-                      <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'hsl(24,20%,11%)', marginBottom: '6px' }}>Type</p>
-                      <div style={{ display: 'flex', gap: '5px' }}>
-                        {(Object.entries(TYPE_CFG) as [ContentType, typeof TYPE_CFG[ContentType]][]).map(([t, cfg]) => (
-                          <button key={t} onClick={() => setAddType(t)} style={{
-                            padding: '5px 10px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-                            background: addType === t ? cfg.bg : 'hsl(42,25%,99%)',
-                            color: addType === t ? cfg.text : 'hsl(24,20%,11%)',
-                            fontSize: '0.7rem', fontWeight: 700, transition: 'background 0.12s',
-                          }}>
-                            {cfg.label}
-                          </button>
-                        ))}
+                      <div>
+                        <p className="mb-1.5 text-[0.7rem] font-bold text-foreground">Type</p>
+                        <div className="flex gap-1.5">
+                          {(Object.entries(TYPE_CFG) as [ContentType, (typeof TYPE_CFG)[ContentType]][]).map(([t, cfg]) => (
+                            <button
+                              key={t}
+                              onClick={() => setAddType(t)}
+                              className={cn(
+                                'rounded-lg px-2.5 py-1 text-[0.7rem] font-bold transition-colors',
+                                addType === t ? '' : 'bg-card text-foreground'
+                              )}
+                              style={addType === t ? { background: cfg.bg, color: cfg.text } : undefined}
+                            >
+                              {cfg.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Title */}
-                    <div>
-                      <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'hsl(24,20%,11%)', marginBottom: '6px' }}>Title (optional)</p>
-                      <input
-                        value={addTitle}
-                        onChange={e => setAddTitle(e.target.value)}
-                        placeholder="e.g., Morning Ritual Series"
-                        style={{
-                          width: '100%', padding: '9px 12px', borderRadius: '8px',
-                          background: 'hsl(42,25%,99%)', border: '1px solid hsl(38,14%,90%)',
-                          fontSize: '0.8rem', color: 'hsl(24,20%,11%)', outline: 'none',
-                          boxSizing: 'border-box',
-                        }}
-                        onFocus={e => { e.target.style.borderColor = 'hsl(200,82%,65%)' }}
-                        onBlur={e => { e.target.style.borderColor = 'hsl(38,14%,90%)' }}
-                      />
-                    </div>
+                      <div>
+                        <p className="mb-1.5 text-[0.7rem] font-bold text-foreground">Title (optional)</p>
+                        <Input
+                          value={addTitle}
+                          onChange={e => setAddTitle(e.target.value)}
+                          placeholder="e.g., Morning Ritual Series"
+                          className="bg-card"
+                        />
+                      </div>
 
-                    {/* Actions */}
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => { setShowAddForm(false); setAddTitle('') }} style={{
-                        flex: 1, padding: '10px', borderRadius: '8px',
-                        background: 'hsl(42,25%,99%)', border: '1px solid hsl(38,14%,90%)',
-                        fontSize: '0.8rem', fontWeight: 600, color: 'hsl(24,10%,44%)', cursor: 'pointer',
-                      }}>
-                        Cancel
-                      </button>
-                      <button onClick={() => goToBrief()} style={{
-                        flex: 2, padding: '10px', borderRadius: '8px',
-                        background: 'hsl(25,82%,60%)', border: 'none',
-                        fontSize: '0.8rem', fontWeight: 700, color: '#fff', cursor: 'pointer',
-                        boxShadow: '0 4px 12px hsla(25,82%,60%,0.3)',
-                      }}>
-                        Create Brief →
-                      </button>
-                    </div>
-                  </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" className="flex-1" onClick={() => { setShowAddForm(false); setAddTitle('') }}>
+                          Cancel
+                        </Button>
+                        <Button className="flex-[2] bg-coral text-white hover:bg-coral/85" onClick={() => goToBrief()}>
+                          Create Brief
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
                 )}
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-5 py-10 text-center">
+              <div className="flex size-20 items-center justify-center rounded-[20px] border border-dashed border-border bg-muted">
+                <span className="text-3xl text-muted-foreground">📅</span>
               </div>
-            ) : (
-              <div style={{
-                flex: 1, display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center', gap: '12px',
-                padding: '40px 20px',
-              }}>
-                <div style={{
-                  width: '80px', height: '80px', borderRadius: '20px',
-                  background: 'hsl(42,18%,94%)',
-                  border: '1.5px dashed hsl(38,14%,85%)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.3 }}>
-                    <rect x="4" y="3" width="16" height="18" rx="3" stroke="hsl(24,10%,44%)" strokeWidth="1.5"/>
-                    <path d="M9 3v3M15 3v3M8 10h3M8 14h8" stroke="hsl(24,10%,44%)" strokeWidth="1.5" strokeLinecap="round"/>
-                  </svg>
-                </div>
-                <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'hsl(24,10%,44%)' }}>Select a day to plan</p>
-                <p style={{ fontSize: '0.75rem', color: 'hsl(24,8%,64%)', textAlign: 'center', maxWidth: '240px' }}>
-                  Click on any date in the calendar above to view existing content or add new posts.
-                </p>
-              </div>
-            )}
-          </div>
+              <p className="text-[0.875rem] font-semibold text-foreground">Select a day to plan</p>
+              <p className="max-w-60 text-[0.75rem] text-muted-foreground">
+                Click on any date in the calendar above to view existing content or add new posts.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </main>
@@ -521,12 +413,17 @@ function ProgressRing({ value, total }: { value: number; total: number }) {
   const dash = pct * circ
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4"/>
-      <circle cx={size/2} cy={size/2} r={r} fill="none"
-        stroke="hsl(25,82%,60%)" strokeWidth="4"
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="hsl(25 82% 60%)"
+        strokeWidth="4"
         strokeDasharray={`${dash} ${circ}`}
         strokeLinecap="round"
-        transform={`rotate(-90 ${size/2} ${size/2})`}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
         style={{ transition: 'stroke-dasharray 0.8s cubic-bezier(0.34,1.56,0.64,1)' }}
       />
     </svg>
@@ -535,12 +432,10 @@ function ProgressRing({ value, total }: { value: number; total: number }) {
 
 function NavBtn({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} style={{
-      width: '28px', height: '28px', borderRadius: '50%',
-      border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)',
-      color: 'hsl(42,22%,84%)', cursor: 'pointer', fontSize: '16px',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
+    <button
+      onClick={onClick}
+      className="flex size-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-base text-background transition-colors hover:bg-white/10"
+    >
       {children}
     </button>
   )

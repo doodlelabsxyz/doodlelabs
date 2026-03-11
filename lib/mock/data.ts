@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck — Legacy prototype mock data, not used in production
 import type {
   User,

@@ -72,7 +72,7 @@ export default function BillingPage() {
               <path d="M12 8v4M12 16h.01" stroke="hsl(200,72%,50%)" strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
             <p style={{ fontSize:'0.75rem', color:'hsl(200,40%,40%)', lineHeight:1.5 }}>
-              <strong>Billing is coming soon.</strong> You're on a free trial. We'll notify you before any charges occur.
+              <strong>Billing is coming soon.</strong> You&apos;re on a free trial. We&apos;ll notify you before any charges occur.
             </p>
           </div>
         </div>

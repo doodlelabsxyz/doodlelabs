@@ -1,0 +1,11 @@
+[     342ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[     472ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[  127946ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[  128054ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[  150246ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[  155266ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[  158587ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[  169972ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[ 1166094ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[ 1166349ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[ 1168467ms] [ERROR] React does not recognize the `%s` prop on a DOM element. If you intentionally want it to appear in the DOM as a custom attribute, spell it as lowercase `%s` instead. If you accidentally passed it from a parent component, remove it from the DOM element. asChild aschild @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127

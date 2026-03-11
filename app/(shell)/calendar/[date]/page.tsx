@@ -5,34 +5,29 @@ import { useRouter, useParams } from 'next/navigation'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { createClient } from '@/lib/supabase/client'
+import { cn } from '@/lib/utils'
 import type { ContentType, ContentStatus } from '@/lib/types'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 gsap.registerPlugin(useGSAP)
 
-const TYPE_CFG: Record<ContentType, { bg: string; text: string; label: string }> = {
-  graphic: { bg: 'hsl(14,72%,62%)',  text: '#fff',    label: 'Graphic' },
-  video:   { bg: 'hsl(40,95%,62%)',  text: '#3a2800', label: 'Video'   },
-  reel:    { bg: 'hsl(161,58%,50%)', text: '#fff',    label: 'Reel'    },
-  story:   { bg: 'hsl(268,60%,68%)', text: '#fff',    label: 'Story'   },
-}
-
-const STATUS_CFG: Record<ContentStatus, { bg: string; text: string; label: string }> = {
-  'planned':          { bg: 'hsl(220,15%,93%)',   text: 'hsl(220,12%,42%)',  label: 'Planned' },
-  'brief-ready':      { bg: 'hsl(200,75%,92%)',   text: 'hsl(200,60%,32%)',  label: 'Brief Ready' },
-  'in-design':        { bg: 'hsl(14,72%,93%)',    text: 'hsl(14,55%,38%)',   label: 'In Design' },
-  'in-editing':       { bg: 'hsl(40,90%,92%)',    text: 'hsl(40,60%,32%)',   label: 'In Editing' },
-  'ready-for-review': { bg: 'hsl(200,80%,90%)',   text: 'hsl(200,70%,28%)',  label: 'Needs Review' },
-  'client-review':    { bg: 'hsl(268,55%,93%)',   text: 'hsl(268,40%,35%)',  label: 'Client Review' },
-  'approved':         { bg: 'hsl(154,45%,90%)',   text: 'hsl(154,45%,25%)',  label: 'Approved' },
-  'scheduled':        { bg: 'hsl(154,40%,87%)',   text: 'hsl(154,40%,22%)',  label: 'Scheduled' },
-  'posted':           { bg: 'hsl(154,30%,88%)',   text: 'hsl(154,30%,24%)',  label: 'Posted' },
-  'overdue':          { bg: 'hsl(4,78%,93%)',     text: 'hsl(4,72%,38%)',    label: 'Overdue' },
+// Full Tailwind class strings — must be complete for JIT scanning
+const TYPE_CELL: Record<ContentType, {
+  bg: string; tint: string; text: string; label: string; strokeCls: string
+}> = {
+  graphic: { bg: 'bg-coral',    tint: 'bg-coral-tint',    text: 'text-white',     label: 'Graphic', strokeCls: 'stroke-coral'    },
+  video:   { bg: 'bg-lemon',    tint: 'bg-lemon-tint',    text: 'text-amber-900', label: 'Video',   strokeCls: 'stroke-lemon'    },
+  reel:    { bg: 'bg-mint',     tint: 'bg-mint-tint',     text: 'text-white',     label: 'Reel',    strokeCls: 'stroke-mint'     },
+  story:   { bg: 'bg-lavender', tint: 'bg-lavender-tint', text: 'text-white',     label: 'Story',   strokeCls: 'stroke-lavender' },
 }
 
 type ContentRow = {
   id: string; title: string; type: ContentType; status: ContentStatus
   caption: string | null; platforms: string[]; scheduled_date: string
   clients: { id: string; name: string; industry: string; brand_color: string } | null
+}
+type ContentQueryRow = Omit<ContentRow, 'clients'> & {
+  clients: ContentRow['clients'] | ContentRow['clients'][]
 }
 type TaskRow = { id: string; title: string; status: string; content_id: string }
 
@@ -44,9 +39,9 @@ export default function DayViewPage() {
   const router  = useRouter()
   const params  = useParams()
   const listRef = useRef<HTMLDivElement>(null)
-  const [mounted, setMounted]   = useState(false)
-  const [content, setContent]   = useState<ContentRow[]>([])
-  const [tasks,   setTasks]     = useState<TaskRow[]>([])
+  const [mounted, setMounted] = useState(false)
+  const [content, setContent] = useState<ContentRow[]>([])
+  const [tasks,   setTasks]   = useState<TaskRow[]>([])
 
   const dateStr = params.date as string
   const [y, m, d] = dateStr.split('-').map(Number)
@@ -76,7 +71,7 @@ export default function DayViewPage() {
           .order('due_date'),
       ])
 
-      const pieces = ((contentRes.data || []) as any[]).map(cp => ({
+      const pieces = ((contentRes.data || []) as ContentQueryRow[]).map(cp => ({
         ...cp,
         clients: Array.isArray(cp.clients) ? (cp.clients[0] ?? null) : cp.clients,
       }))
@@ -90,7 +85,7 @@ export default function DayViewPage() {
 
   useGSAP(() => {
     if (!mounted || !listRef.current) return
-    gsap.fromTo('.day-card',
+    gsap.fromTo('[data-animate="day-card"]',
       { y: 16, opacity: 0 },
       { y: 0, opacity: 1, duration: 0.4, stagger: 0.08, ease: 'back.out(1.3)', clearProps: 'all' }
     )
@@ -99,127 +94,165 @@ export default function DayViewPage() {
   if (!mounted) return null
 
   return (
-    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+    <main className="page-main flex-1 min-w-0 overflow-y-auto flex flex-col">
 
-      <div style={{ background: '#0F1A14', padding: '18px 20px 16px', flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button onClick={() => router.push('/calendar')} style={{
-            width: '32px', height: '32px', borderRadius: '8px',
-            background: 'rgba(255,255,255,0.06)', border: 'none',
-            color: 'hsl(42,22%,84%)', cursor: 'pointer', fontSize: '16px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>←</button>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: '0.656rem', color: 'hsl(140,7%,48%)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '1px' }}>
+      {/* ── Dark header ── */}
+      <div className="bg-dark px-5 pt-[18px] pb-4 shrink-0 border-b border-white/[0.04]">
+        <div className="flex items-center gap-3">
+          {/* Back button */}
+          <button
+            onClick={() => router.push('/calendar')}
+            className="w-8 h-8 rounded-lg bg-white/[0.06] border-0 text-dark-text cursor-pointer text-base flex items-center justify-center hover:bg-white/[0.1] transition-colors"
+          >←</button>
+
+          <div className="flex-1">
+            <p className="text-[0.656rem] text-dark-muted tracking-[0.08em] uppercase mb-px">
               {isToday ? 'Today' : isPast ? 'Past' : 'Upcoming'}
             </p>
-            <h1 style={{ fontSize: '1.167rem', fontWeight: 800, color: 'hsl(42,22%,84%)', lineHeight: 1 }}>
+            <h1 className="text-[1.167rem] font-extrabold text-dark-text leading-none">
               {viewDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </h1>
           </div>
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <button onClick={() => router.push(`/calendar/${dateToStr(prevDate)}`)} style={{ width: '30px', height: '30px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: 'hsl(42,22%,84%)', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
-            <button onClick={() => router.push(`/calendar/${dateToStr(nextDate)}`)} style={{ width: '30px', height: '30px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: 'hsl(42,22%,84%)', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+
+          {/* Prev / Next day */}
+          <div className="flex gap-[6px]">
+            <button
+              onClick={() => router.push(`/calendar/${dateToStr(prevDate)}`)}
+              className="w-[30px] h-[30px] rounded-full border border-white/[0.1] bg-white/[0.04] text-dark-text cursor-pointer text-sm flex items-center justify-center hover:bg-white/[0.08] transition-colors"
+            >‹</button>
+            <button
+              onClick={() => router.push(`/calendar/${dateToStr(nextDate)}`)}
+              className="w-[30px] h-[30px] rounded-full border border-white/[0.1] bg-white/[0.04] text-dark-text cursor-pointer text-sm flex items-center justify-center hover:bg-white/[0.08] transition-colors"
+            >›</button>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-          <div style={{ padding: '5px 12px', borderRadius: '99px', background: 'rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.875rem', fontWeight: 800, color: 'hsl(25,82%,60%)' }}>{content.length}</span>
-            <span style={{ fontSize: '0.656rem', color: 'hsl(140,7%,48%)' }}>posts</span>
+        {/* Stats row */}
+        <div className="flex gap-2 mt-3">
+          <div className="px-3 py-[5px] rounded-full bg-white/[0.07] flex items-center gap-[6px]">
+            <span className="text-[0.875rem] font-extrabold text-coral">{content.length}</span>
+            <span className="text-[0.656rem] text-dark-muted">posts</span>
           </div>
           {content.some(c => c.status === 'overdue') && (
-            <div style={{ padding: '5px 12px', borderRadius: '99px', background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '0.875rem', fontWeight: 800, color: 'hsl(4,75%,56%)' }}>
+            <div className="px-3 py-[5px] rounded-full bg-danger/15 flex items-center gap-[6px]">
+              <span className="text-[0.875rem] font-extrabold text-danger">
                 {content.filter(c => c.status === 'overdue').length}
               </span>
-              <span style={{ fontSize: '0.656rem', color: 'hsl(4,75%,60%)' }}>overdue</span>
+              <span className="text-[0.656rem] text-danger/70">overdue</span>
             </div>
           )}
         </div>
       </div>
 
-      <div ref={listRef} style={{ padding: '16px', flex: 1 }}>
+      {/* ── Content list ── */}
+      <div ref={listRef} className="p-4 flex-1">
         {content.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', padding: '60px 20px' }}>
-            <div style={{ width: '72px', height: '72px', borderRadius: '18px', background: 'hsl(42,18%,94%)', border: '1.5px dashed hsl(38,14%,85%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.3 }}>
-                <rect x="3" y="5" width="18" height="17" rx="3" stroke="hsl(24,10%,44%)" strokeWidth="1.5"/>
-                <path d="M3 10h18M8 3v4M16 3v4" stroke="hsl(24,10%,44%)" strokeWidth="1.5" strokeLinecap="round"/>
+          <div className="flex flex-col items-center justify-center gap-3 py-[60px] px-5">
+            <div className="w-[72px] h-[72px] rounded-[18px] bg-island-2 border border-dashed border-border flex items-center justify-center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="opacity-30">
+                <rect x="3" y="5" width="18" height="17" rx="3" className="stroke-muted" strokeWidth="1.5"/>
+                <path d="M3 10h18M8 3v4M16 3v4" className="stroke-muted" strokeWidth="1.5" strokeLinecap="round"/>
               </svg>
             </div>
-            <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'hsl(24,10%,44%)' }}>No content scheduled</p>
+            <p className="text-[0.875rem] font-semibold text-muted">No content scheduled</p>
             <button
               onClick={() => router.push(`/brief/new?date=${dateStr}`)}
-              style={{ padding: '10px 20px', borderRadius: '10px', background: 'hsl(25,82%,60%)', border: 'none', color: '#fff', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', boxShadow: '0 4px 12px hsla(25,82%,60%,0.3)' }}
+              className="px-5 py-[10px] rounded-[10px] bg-coral border-0 text-white font-bold text-[0.8rem] cursor-pointer shadow-[0_4px_12px_hsla(14,72%,62%,0.3)] hover:bg-coral/90 transition-colors"
             >
               + Create Content
             </button>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div className="flex flex-col gap-[10px]">
             {content.map(cp => {
-              const cfg   = TYPE_CFG[cp.type]
-              const sCfg  = STATUS_CFG[cp.status] ?? STATUS_CFG['planned']
+              const cfg     = TYPE_CELL[cp.type]
               const cpTasks = tasks.filter(t => t.content_id === cp.id)
 
               return (
                 <div
                   key={cp.id}
-                  className="day-card"
+                  data-animate="day-card"
                   onClick={() => router.push(`/brief/${cp.id}`)}
-                  style={{ background: 'hsl(42,25%,99%)', borderRadius: '16px', border: '1px solid hsl(38,14%,90%)', overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.15s ease' }}
-                  onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = 'translateY(-3px)'; el.style.boxShadow = `0 12px 32px ${cfg.bg}20` }}
-                  onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = ''; el.style.boxShadow = '' }}
+                  className={cn(
+                    "bg-island rounded-2xl border overflow-hidden cursor-pointer",
+                    "transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+                    "hover:-translate-y-[3px] hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)]"
+                  )}
                 >
-                  <div style={{ height: '4px', background: cfg.bg }} />
-                  <div style={{ padding: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '10px' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: '0.95rem', fontWeight: 800, color: 'hsl(24,20%,11%)', lineHeight: 1.3 }}>{cp.title}</p>
+                  {/* Type accent bar */}
+                  <div className={cn("h-1", cfg.bg)} />
+
+                  <div className="p-4">
+                    {/* Title row */}
+                    <div className="flex items-start justify-between gap-3 mb-[10px]">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[0.95rem] font-extrabold text-ink leading-[1.3]">{cp.title}</p>
                         {cp.clients && (
-                          <p style={{ fontSize: '0.75rem', color: 'hsl(24,10%,54%)', marginTop: '3px' }}>{cp.clients.name} · {cp.clients.industry}</p>
+                          <p className="text-[0.75rem] text-muted mt-[3px]">
+                            {cp.clients.name} · {cp.clients.industry}
+                          </p>
                         )}
                       </div>
-                      <span style={{ padding: '4px 10px', borderRadius: '99px', background: sCfg.bg, color: sCfg.text, fontSize: '0.656rem', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                        {sCfg.label}
-                      </span>
+                      <StatusBadge status={cp.status} size="sm" className="shrink-0 mt-0.5">
+                        {cp.status.replace(/-/g, ' ')}
+                      </StatusBadge>
                     </div>
 
+                    {/* Caption preview */}
                     {cp.caption && (
-                      <p style={{ fontSize: '0.8rem', color: 'hsl(24,10%,44%)', lineHeight: 1.5, marginBottom: '12px', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      <p className="text-[0.8rem] text-muted leading-[1.5] mb-3 line-clamp-2">
                         {cp.caption}
                       </p>
                     )}
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                      <span style={{ padding: '3px 8px', borderRadius: '6px', background: cfg.bg, color: cfg.text, fontSize: '0.656rem', fontWeight: 700 }}>
+                    {/* Tags row */}
+                    <div className="flex items-center gap-[10px] flex-wrap">
+                      <span className={cn("px-2 py-[3px] rounded-[6px] text-[0.656rem] font-bold", cfg.bg, cfg.text)}>
                         {cfg.label}
                       </span>
-                      <div style={{ display: 'flex', gap: '4px' }}>
+                      <div className="flex gap-1">
                         {cp.platforms.map(p => (
-                          <span key={p} style={{ padding: '3px 8px', borderRadius: '6px', background: 'hsl(42,18%,93%)', fontSize: '0.656rem', fontWeight: 600, color: 'hsl(24,10%,44%)', textTransform: 'capitalize' }}>
+                          <span key={p} className="px-2 py-[3px] rounded-[6px] bg-island-2 text-[0.656rem] font-semibold text-muted capitalize">
                             {p}
                           </span>
                         ))}
                       </div>
                     </div>
 
+                    {/* Tasks */}
                     {cpTasks.length > 0 && (
-                      <div style={{ marginTop: '12px', borderTop: '1px solid hsl(38,14%,92%)', paddingTop: '10px' }}>
-                        <p style={{ fontSize: '0.656rem', fontWeight: 700, color: 'hsl(24,10%,44%)', marginBottom: '6px' }}>
+                      <div className="mt-3 border-t border-border pt-[10px]">
+                        <p className="text-[0.656rem] font-bold text-muted mb-[6px]">
                           Tasks ({cpTasks.length})
                         </p>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div className="flex flex-col gap-1">
                           {cpTasks.map(t => (
-                            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <div style={{ width: '14px', height: '14px', borderRadius: '4px', border: `1.5px solid ${t.status === 'done' ? 'hsl(154,50%,40%)' : t.status === 'overdue' ? 'hsl(4,75%,56%)' : 'hsl(38,14%,82%)'}`, background: t.status === 'done' ? 'hsl(154,50%,40%)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {t.status === 'done' && <svg width="8" height="8" viewBox="0 0 12 12" fill="none"><path d="M3 6l2 2 4-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                            <div key={t.id} className="flex items-center gap-2">
+                              {/* Checkbox */}
+                              <div className={cn(
+                                "w-[14px] h-[14px] rounded-[4px] border-[1.5px] flex items-center justify-center shrink-0",
+                                t.status === 'done'
+                                  ? "border-success bg-success"
+                                  : t.status === 'overdue'
+                                    ? "border-danger bg-transparent"
+                                    : "border-border bg-transparent"
+                              )}>
+                                {t.status === 'done' && (
+                                  <svg width="8" height="8" viewBox="0 0 12 12" fill="none">
+                                    <path d="M3 6l2 2 4-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                )}
                               </div>
-                              <span style={{ fontSize: '0.75rem', color: 'hsl(24,10%,44%)', flex: 1, textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>
+                              <span className={cn(
+                                "text-[0.75rem] text-muted flex-1",
+                                t.status === 'done' && "line-through"
+                              )}>
                                 {t.title}
                               </span>
-                              <span style={{ fontSize: '0.6rem', fontWeight: 600, color: t.status === 'overdue' ? 'hsl(4,72%,38%)' : 'hsl(24,8%,64%)', textTransform: 'capitalize' }}>
+                              <span className={cn(
+                                "text-[0.6rem] font-semibold capitalize",
+                                t.status === 'overdue' ? "text-danger" : "text-ghost"
+                              )}>
                                 {t.status.replace('-', ' ')}
                               </span>
                             </div>
@@ -232,11 +265,12 @@ export default function DayViewPage() {
               )
             })}
 
+            {/* Add more button */}
             <button
               onClick={() => router.push(`/brief/new?date=${dateStr}`)}
-              style={{ padding: '14px', borderRadius: '12px', border: '1.5px dashed hsla(25,82%,60%,0.4)', background: 'hsla(25,82%,60%,0.04)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '4px' }}
+              className="p-[14px] rounded-xl border border-dashed border-coral/40 bg-coral/[0.04] cursor-pointer flex items-center justify-center gap-2 mt-1 hover:bg-coral/[0.07] transition-colors"
             >
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'hsl(25,82%,60%)' }}>+ Add Content</span>
+              <span className="text-[0.85rem] font-semibold text-coral">+ Add Content</span>
             </button>
           </div>
         )}

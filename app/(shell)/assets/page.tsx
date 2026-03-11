@@ -3,23 +3,53 @@
 import { useState, useRef, useEffect } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
+
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { UserAvatar } from '@/components/ui/user-avatar'
+import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import type { AssetType } from '@/lib/types'
-import { getInitials, getAvatarColor } from '@/lib/utils'
 
 gsap.registerPlugin(useGSAP)
 
-const TYPE_CFG: Record<AssetType, { bg: string; text: string; label: string; icon: string }> = {
-  'graphic':        { bg: 'hsl(14,72%,62%)',  text: '#fff',    label: 'Graphic',   icon: '🖼' },
-  'raw-footage':    { bg: 'hsl(40,95%,62%)',  text: '#3a2800', label: 'Raw Video',  icon: '🎬' },
-  'edited-video':   { bg: 'hsl(161,58%,50%)', text: '#fff',    label: 'Edited',     icon: '🎞' },
-  'brand-material': { bg: 'hsl(268,60%,68%)', text: '#fff',    label: 'Brand',      icon: '🎨' },
+const TYPE_CFG: Record<
+  AssetType,
+  { label: string; badgeClass: string; accentClass: string; previewClass: string }
+> = {
+  graphic: {
+    label: 'Graphic',
+    badgeClass: 'bg-coral text-white',
+    accentClass: 'bg-coral',
+    previewClass: 'from-coral/15 to-coral/5 text-coral',
+  },
+  'raw-footage': {
+    label: 'Raw Video',
+    badgeClass: 'bg-lemon text-amber-950',
+    accentClass: 'bg-lemon',
+    previewClass: 'from-lemon/20 to-lemon/5 text-amber-700',
+  },
+  'edited-video': {
+    label: 'Edited',
+    badgeClass: 'bg-mint text-white',
+    accentClass: 'bg-mint',
+    previewClass: 'from-mint/20 to-mint/5 text-mint',
+  },
+  'brand-material': {
+    label: 'Brand',
+    badgeClass: 'bg-lavender text-white',
+    accentClass: 'bg-lavender',
+    previewClass: 'from-lavender/20 to-lavender/5 text-lavender',
+  },
 }
 
 function relDate(dateStr: string) {
   const d = new Date(dateStr)
-  const today = new Date(); today.setHours(0, 0, 0, 0)
-  const diff  = Math.round((d.getTime() - today.getTime()) / 86400000)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const diff = Math.round((d.getTime() - today.getTime()) / 86400000)
   if (diff === 0) return 'Today'
   if (diff === -1) return 'Yesterday'
   if (diff < -1) return `${Math.abs(diff)}d ago`
@@ -34,57 +64,108 @@ function fileIcon(name: string) {
 }
 
 type AssetRow = {
-  id: string; type: AssetType; file_name: string; file_size: string | null
-  uploaded_at: string; content_id: string; client_id: string
+  id: string
+  type: AssetType
+  file_name: string
+  file_size: string | null
+  uploaded_at: string
+  content_id: string
+  client_id: string
   clients: { id: string; name: string; brand_color: string } | null
-  users:   { id: string; name: string } | null
+  users: { id: string; name: string } | null
 }
+
 type ClientRow = { id: string; name: string; brand_color: string }
+
+type AssetFetchRow = Omit<AssetRow, 'clients' | 'users'> & {
+  clients: AssetRow['clients'] | AssetRow['clients'][]
+  users: AssetRow['users'] | AssetRow['users'][]
+}
+
+function FilterPill({
+  label,
+  active,
+  color,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  color: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{ '--pill-color': color } as React.CSSProperties}
+      className={cn(
+        'rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap transition-colors',
+        active
+          ? 'bg-[var(--pill-color)] text-white'
+          : 'bg-white/7 text-dark-muted hover:bg-white/10 hover:text-dark-text'
+      )}
+    >
+      {label}
+    </button>
+  )
+}
 
 export default function AssetsPage() {
   const gridRef = useRef<HTMLDivElement>(null)
-  const [mounted,       setMounted]       = useState(false)
-  const [assets,        setAssets]        = useState<AssetRow[]>([])
-  const [clients,       setClients]       = useState<ClientRow[]>([])
-  const [search,        setSearch]        = useState('')
-  const [typeFilter,    setTypeFilter]    = useState<AssetType | 'all'>('all')
-  const [clientFilter,  setClientFilter]  = useState<string | null>(null)
-  const [viewMode,      setViewMode]      = useState<'grid' | 'list'>('grid')
+  const [mounted, setMounted] = useState(false)
+  const [assets, setAssets] = useState<AssetRow[]>([])
+  const [clients, setClients] = useState<ClientRow[]>([])
+  const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState<AssetType | 'all'>('all')
+  const [clientFilter, setClientFilter] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
   useEffect(() => {
     async function load() {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
       if (!user) return
 
       const [assetsRes, clientsRes] = await Promise.all([
         supabase
           .from('assets')
-          .select('id, type, file_name, file_size, uploaded_at, content_id, client_id, clients(id, name, brand_color), users!assets_uploaded_by_fkey(id, name)')
+          .select(
+            'id, type, file_name, file_size, uploaded_at, content_id, client_id, clients(id, name, brand_color), users!assets_uploaded_by_fkey(id, name)'
+          )
           .order('uploaded_at', { ascending: false }),
         supabase.from('clients').select('id, name, brand_color'),
       ])
 
       setAssets(
-        ((assetsRes.data || []) as any[]).map(a => ({
+        ((assetsRes.data || []) as AssetFetchRow[]).map(a => ({
           ...a,
           clients: Array.isArray(a.clients) ? (a.clients[0] ?? null) : a.clients,
-          users:   Array.isArray(a.users)   ? (a.users[0]   ?? null) : a.users,
+          users: Array.isArray(a.users) ? (a.users[0] ?? null) : a.users,
         }))
       )
       setClients((clientsRes.data || []) as ClientRow[])
       setMounted(true)
     }
-    load()
+    void load()
   }, [])
 
   useGSAP(() => {
     if (!mounted || !gridRef.current) return
-    gsap.fromTo('.asset-card',
+    gsap.fromTo(
+      '[data-animate="asset-card"]',
       { y: 16, opacity: 0, scale: 0.96 },
-      { y: 0, opacity: 1, scale: 1, duration: 0.35, stagger: { amount: 0.2 }, ease: 'back.out(1.2)', clearProps: 'all' }
+      {
+        y: 0,
+        opacity: 1,
+        scale: 1,
+        duration: 0.35,
+        stagger: { amount: 0.2 },
+        ease: 'back.out(1.2)',
+        clearProps: 'all',
+      }
     )
-  }, { dependencies: [mounted, typeFilter, clientFilter], scope: gridRef })
+  }, { dependencies: [mounted, typeFilter, clientFilter, search, viewMode], scope: gridRef })
 
   const filtered = assets.filter(a => {
     if (typeFilter !== 'all' && a.type !== typeFilter) return false
@@ -101,136 +182,212 @@ export default function AssetsPage() {
   if (!mounted) return null
 
   return (
-    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-
-      <div style={{ background: '#0F1A14', padding: '18px 20px 14px', flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: '0.656rem', color: 'hsl(140,7%,48%)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '1px' }}>Media</p>
-            <h1 style={{ fontSize: '1.167rem', fontWeight: 800, color: 'hsl(42,22%,84%)', lineHeight: 1 }}>Asset Library</h1>
+    <main className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto">
+      <section className="border-b border-white/4 bg-dark px-5 pt-[18px] pb-[14px]">
+        <div className="mb-3 flex items-center gap-3">
+          <div className="flex-1">
+            <p className="mb-px text-2xs uppercase tracking-[0.08em] text-dark-muted">Media</p>
+            <h1 className="text-md font-extrabold leading-none text-dark-text">Asset Library</h1>
           </div>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: '1rem', fontWeight: 800, color: 'hsl(25,82%,60%)', lineHeight: 1 }}>{assets.length}</p>
-              <p style={{ fontSize: '0.6rem', color: 'hsl(140,7%,48%)', marginTop: '2px' }}>files</p>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-base font-extrabold leading-none text-coral">{assets.length}</p>
+              <p className="mt-0.5 text-[0.6rem] text-dark-muted">files</p>
             </div>
-            <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.07)' }} />
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ fontSize: '1rem', fontWeight: 800, color: 'hsl(42,22%,84%)', lineHeight: 1 }}>{totalSizeMb.toFixed(1)}</p>
-              <p style={{ fontSize: '0.6rem', color: 'hsl(140,7%,48%)', marginTop: '2px' }}>MB total</p>
+            <div className="h-6 w-px bg-white/7" />
+            <div className="text-right">
+              <p className="text-base font-extrabold leading-none text-dark-text">
+                {totalSizeMb.toFixed(1)}
+              </p>
+              <p className="mt-0.5 text-[0.6rem] text-dark-muted">MB total</p>
             </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px', marginBottom: '8px' }}>
-          <FilterPill label="All Types" active={typeFilter === 'all'} color="hsl(25,82%,60%)" onClick={() => setTypeFilter('all')} />
-          {(Object.entries(TYPE_CFG) as [AssetType, typeof TYPE_CFG[AssetType]][]).map(([t, c]) => (
-            <FilterPill key={t} label={c.label} active={typeFilter === t} color={c.bg} onClick={() => setTypeFilter(typeFilter === t ? 'all' : t)} />
+        <div className="mb-2 flex gap-1.5 overflow-x-auto pb-0.5">
+          <FilterPill
+            label="All Types"
+            active={typeFilter === 'all'}
+            color="hsl(25,82%,60%)"
+            onClick={() => setTypeFilter('all')}
+          />
+          {(Object.entries(TYPE_CFG) as [AssetType, (typeof TYPE_CFG)[AssetType]][]).map(([t, c]) => (
+            <FilterPill
+              key={t}
+              label={c.label}
+              active={typeFilter === t}
+              color={
+                t === 'graphic'
+                  ? 'hsl(14,72%,62%)'
+                  : t === 'raw-footage'
+                    ? 'hsl(40,95%,62%)'
+                    : t === 'edited-video'
+                      ? 'hsl(161,58%,50%)'
+                      : 'hsl(268,60%,68%)'
+              }
+              onClick={() => setTypeFilter(typeFilter === t ? 'all' : t)}
+            />
           ))}
         </div>
-        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto' }}>
-          <FilterPill label="All Clients" active={!clientFilter} color="hsl(200,82%,58%)" onClick={() => setClientFilter(null)} />
+
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+          <FilterPill
+            label="All Clients"
+            active={!clientFilter}
+            color="hsl(200,82%,58%)"
+            onClick={() => setClientFilter(null)}
+          />
           {clients.map(c => (
-            <FilterPill key={c.id} label={c.name} active={clientFilter === c.id} color={c.brand_color} onClick={() => setClientFilter(clientFilter === c.id ? null : c.id)} />
+            <FilterPill
+              key={c.id}
+              label={c.name}
+              active={clientFilter === c.id}
+              color={c.brand_color}
+              onClick={() => setClientFilter(clientFilter === c.id ? null : c.id)}
+            />
           ))}
         </div>
-      </div>
+      </section>
 
-      <div style={{ padding: '12px 16px', display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0 }}>
-        <div style={{ flex: 1, position: 'relative', maxWidth: '320px' }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'hsl(24,10%,54%)' }}>
-            <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8"/>
-            <path d="M16.5 16.5L21 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+      <section className="flex flex-wrap items-center gap-2 px-4 py-3">
+        <div className="relative max-w-80 flex-1">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
+          >
+            <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
+            <path d="M16.5 16.5L21 21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
           </svg>
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search files…"
-            style={{ width: '100%', padding: '9px 12px 9px 34px', borderRadius: '10px', background: 'hsl(42,25%,99%)', border: '1px solid hsl(38,14%,90%)', fontSize: '0.8rem', color: 'hsl(24,20%,11%)', outline: 'none' }}
-            onFocus={e => { e.target.style.borderColor = 'hsl(200,82%,65%)' }}
-            onBlur={e => { e.target.style.borderColor = 'hsl(38,14%,90%)' }}
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search files..."
+            className="bg-card pr-3 pl-8"
           />
         </div>
-        <div style={{ display: 'flex', borderRadius: '8px', overflow: 'hidden', border: '1px solid hsl(38,14%,90%)' }}>
+
+        <div className="flex rounded-md border border-border bg-card p-0.5">
           {(['grid', 'list'] as const).map(v => (
-            <button key={v} onClick={() => setViewMode(v)} style={{ padding: '7px 12px', border: 'none', cursor: 'pointer', background: viewMode === v ? 'hsl(25,82%,60%)' : 'hsl(42,25%,99%)', color: viewMode === v ? '#fff' : 'hsl(24,10%,44%)', fontSize: '0.7rem', fontWeight: 600, textTransform: 'capitalize' }}>
+            <Button
+              key={v}
+              variant={viewMode === v ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode(v)}
+              className={cn(
+                'capitalize',
+                viewMode === v && 'bg-coral text-white hover:bg-coral/85'
+              )}
+            >
               {v}
-            </button>
+            </Button>
           ))}
         </div>
-      </div>
+      </section>
 
-      <div ref={gridRef} style={{ padding: '0 16px 80px', flex: 1 }}>
+      <div ref={gridRef} className="flex-1 px-4 pb-20">
         {filtered.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 20px', gap: '12px' }}>
-            <div style={{ width: '72px', height: '72px', borderRadius: '18px', background: 'hsl(42,18%,94%)', border: '1.5px dashed hsl(38,14%,85%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.3 }}>
-                <rect x="3" y="3" width="18" height="18" rx="4" stroke="hsl(24,10%,44%)" strokeWidth="1.5"/>
-                <circle cx="8.5" cy="8.5" r="2" stroke="hsl(24,10%,44%)" strokeWidth="1.5"/>
-                <path d="M3 16l5-4 4 3 3-2 6 5" stroke="hsl(24,10%,44%)" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </div>
-            <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'hsl(24,10%,44%)' }}>No assets found</p>
-          </div>
+          <Card className="border border-dashed border-border bg-card shadow-none">
+            <CardContent className="flex flex-col items-center gap-3 py-14 text-center">
+              <div className="flex size-[72px] items-center justify-center rounded-[18px] border border-dashed border-border bg-secondary">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="opacity-30">
+                  <rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" strokeWidth="1.5" />
+                  <circle cx="8.5" cy="8.5" r="2" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M3 16l5-4 4 3 3-2 6 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </div>
+              <p className="text-sm font-semibold text-muted-foreground">No assets found</p>
+            </CardContent>
+          </Card>
         ) : viewMode === 'grid' ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
             {filtered.map(asset => {
-              const cfg  = TYPE_CFG[asset.type]
+              const cfg = TYPE_CFG[asset.type]
               const icon = fileIcon(asset.file_name)
+
               return (
-                <div key={asset.id} className="asset-card" style={{ background: 'hsl(42,25%,99%)', borderRadius: '14px', border: '1px solid hsl(38,14%,90%)', overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.15s ease' }}
-                  onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = 'translateY(-3px)'; el.style.boxShadow = `0 8px 24px ${cfg.bg}18` }}
-                  onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = ''; el.style.boxShadow = '' }}
+                <Card
+                  key={asset.id}
+                  data-animate="asset-card"
+                  className="group gap-0 overflow-hidden border border-border py-0 shadow-none transition-all hover:-translate-y-1 hover:shadow-md"
                 >
-                  <div style={{ height: '120px', background: `linear-gradient(135deg, ${cfg.bg}15 0%, ${cfg.bg}08 100%)`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', borderBottom: `3px solid ${cfg.bg}` }}>
-                    <FileIconSvg type={icon} color={cfg.bg} />
-                    <span style={{ fontSize: '0.55rem', color: cfg.bg, fontWeight: 600, opacity: 0.7 }}>{asset.file_size}</span>
+                  <div
+                    className={cn(
+                      'flex h-[120px] flex-col items-center justify-center gap-1.5 border-b-3 bg-gradient-to-br',
+                      cfg.previewClass,
+                      asset.type === 'graphic' && 'border-b-coral',
+                      asset.type === 'raw-footage' && 'border-b-lemon',
+                      asset.type === 'edited-video' && 'border-b-mint',
+                      asset.type === 'brand-material' && 'border-b-lavender'
+                    )}
+                  >
+                    <FileIconSvg type={icon} />
+                    <span className="text-[0.55rem] font-semibold opacity-70">
+                      {asset.file_size || '—'}
+                    </span>
                   </div>
-                  <div style={{ padding: '10px 12px' }}>
-                    <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'hsl(24,20%,11%)', lineHeight: 1.3, marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+
+                  <CardContent className="py-3">
+                    <p className="mb-1 truncate text-xs font-bold leading-5 text-foreground">
                       {asset.file_name}
                     </p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                      <span style={{ padding: '1px 5px', borderRadius: '4px', background: cfg.bg, color: cfg.text, fontSize: '0.52rem', fontWeight: 700 }}>{cfg.label}</span>
-                      {asset.clients && <span style={{ fontSize: '0.6rem', color: 'hsl(24,10%,54%)' }}>{asset.clients.name}</span>}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      {asset.users && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: getAvatarColor(asset.users.id), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.42rem', fontWeight: 800, color: '#fff' }}>
-                            {getInitials(asset.users.name)}
-                          </div>
-                          <span style={{ fontSize: '0.6rem', color: 'hsl(24,8%,64%)' }}>{asset.users.name.split(' ')[0]}</span>
-                        </div>
+                    <div className="mb-2 flex items-center gap-1.5">
+                      <Badge className={cn('border-0 px-1.5 text-[0.52rem] font-bold', cfg.badgeClass)}>
+                        {cfg.label}
+                      </Badge>
+                      {asset.clients && (
+                        <span className="truncate text-[0.6rem] text-muted-foreground">
+                          {asset.clients.name}
+                        </span>
                       )}
-                      <span style={{ fontSize: '0.58rem', color: 'hsl(24,8%,64%)' }}>{relDate(asset.uploaded_at)}</span>
                     </div>
-                  </div>
-                </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      {asset.users ? (
+                        <div className="flex min-w-0 items-center gap-1">
+                          <UserAvatar userId={asset.users.id} name={asset.users.name} size="sm" />
+                          <span className="truncate text-[0.6rem] text-ghost">
+                            {asset.users.name.split(' ')[0]}
+                          </span>
+                        </div>
+                      ) : <span />}
+                      <span className="text-[0.58rem] text-ghost">{relDate(asset.uploaded_at)}</span>
+                    </div>
+                  </CardContent>
+                </Card>
               )
             })}
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div className="flex flex-col gap-1">
             {filtered.map(asset => {
               const cfg = TYPE_CFG[asset.type]
+
               return (
-                <div key={asset.id} className="asset-card" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', borderRadius: '10px', background: 'hsl(42,25%,99%)', border: '1px solid hsl(38,14%,90%)', cursor: 'pointer', transition: 'background 0.12s ease' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'hsl(42,28%,97%)' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'hsl(42,25%,99%)' }}
+                <Card
+                  key={asset.id}
+                  data-animate="asset-card"
+                  className="gap-0 border border-border py-0 shadow-none transition-colors hover:bg-muted/30"
                 >
-                  <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: cfg.bg, flexShrink: 0 }} />
-                  <p style={{ flex: 1, fontSize: '0.8rem', fontWeight: 600, color: 'hsl(24,20%,11%)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-                    {asset.file_name}
-                  </p>
-                  <span style={{ fontSize: '0.656rem', color: 'hsl(24,10%,54%)', flexShrink: 0 }}>{asset.clients?.name}</span>
-                  <span style={{ fontSize: '0.656rem', color: 'hsl(24,8%,64%)', flexShrink: 0 }}>{asset.file_size}</span>
-                  {asset.users && (
-                    <div style={{ width: '18px', height: '18px', borderRadius: '5px', background: getAvatarColor(asset.users.id), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.45rem', fontWeight: 800, color: '#fff', flexShrink: 0 }}>
-                      {getInitials(asset.users.name)}
-                    </div>
-                  )}
-                  <span style={{ fontSize: '0.6rem', color: 'hsl(24,8%,64%)', flexShrink: 0, minWidth: '50px', textAlign: 'right' }}>{relDate(asset.uploaded_at)}</span>
-                </div>
+                  <CardContent className="flex items-center gap-3 py-3">
+                    <div className={cn('size-2 shrink-0 rounded-[2px]', cfg.accentClass)} />
+                    <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+                      {asset.file_name}
+                    </p>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {asset.clients?.name}
+                    </span>
+                    <span className="shrink-0 text-xs text-ghost">{asset.file_size}</span>
+                    {asset.users ? (
+                      <UserAvatar userId={asset.users.id} name={asset.users.name} size="sm" />
+                    ) : null}
+                    <span className="min-w-[50px] shrink-0 text-right text-[0.6rem] text-ghost">
+                      {relDate(asset.uploaded_at)}
+                    </span>
+                  </CardContent>
+                </Card>
               )
             })}
           </div>
@@ -240,26 +397,31 @@ export default function AssetsPage() {
   )
 }
 
-function FileIconSvg({ type, color }: { type: string; color: string }) {
+function FileIconSvg({ type }: { type: string }) {
   return (
-    <svg width="36" height="36" viewBox="0 0 36 36" fill="none" style={{ opacity: 0.5 }}>
+    <svg width="36" height="36" viewBox="0 0 36 36" fill="none" className="opacity-50">
       {type === 'img' ? (
-        <><rect x="4" y="4" width="28" height="28" rx="6" stroke={color} strokeWidth="1.5"/><circle cx="12" cy="12" r="3" stroke={color} strokeWidth="1.5"/><path d="M4 26l8-6 6 4 4-3 10 7" stroke={color} strokeWidth="1.5" strokeLinecap="round"/></>
+        <>
+          <rect x="4" y="4" width="28" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" />
+          <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M4 26l8-6 6 4 4-3 10 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </>
       ) : type === 'vid' ? (
-        <><rect x="4" y="6" width="28" height="24" rx="5" stroke={color} strokeWidth="1.5"/><path d="M15 14l8 5-8 5V14z" stroke={color} strokeWidth="1.5" strokeLinejoin="round"/></>
+        <>
+          <rect x="4" y="6" width="28" height="24" rx="5" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M15 14l8 5-8 5V14z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        </>
       ) : type === 'zip' ? (
-        <><rect x="6" y="4" width="24" height="28" rx="4" stroke={color} strokeWidth="1.5"/><path d="M14 4v28M18 8h-4M18 12h-4M18 16h-4M18 20h-4" stroke={color} strokeWidth="1.5" strokeLinecap="round"/></>
+        <>
+          <rect x="6" y="4" width="24" height="28" rx="4" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M14 4v28M18 8h-4M18 12h-4M18 16h-4M18 20h-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </>
       ) : (
-        <><rect x="6" y="4" width="24" height="28" rx="4" stroke={color} strokeWidth="1.5"/><path d="M12 14h12M12 18h12M12 22h8" stroke={color} strokeWidth="1.5" strokeLinecap="round"/></>
+        <>
+          <rect x="6" y="4" width="24" height="28" rx="4" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M12 14h12M12 18h12M12 22h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </>
       )}
     </svg>
-  )
-}
-
-function FilterPill({ label, active, color, onClick }: { label: string; active: boolean; color: string; onClick: () => void }) {
-  return (
-    <button onClick={onClick} style={{ padding: '4px 11px', borderRadius: '9999px', border: 'none', background: active ? color : 'rgba(255,255,255,0.07)', color: active ? '#fff' : 'hsl(140,7%,48%)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'background 0.15s' }}>
-      {label}
-    </button>
   )
 }

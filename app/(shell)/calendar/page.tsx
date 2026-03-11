@@ -1,21 +1,26 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { createClient } from '@/lib/supabase/client'
+import { cn } from '@/lib/utils'
 import type { ContentType } from '@/lib/types'
 
 gsap.registerPlugin(useGSAP)
 
 type ViewMode = 'month' | 'week' | 'day'
 
-const TYPE_CFG: Record<ContentType, { bg: string; light: string; text: string; label: string }> = {
-  graphic: { bg: 'hsl(14,72%,62%)',  light: 'hsl(14,72%,94%)',  text: '#fff',    label: 'Graphic' },
-  video:   { bg: 'hsl(40,95%,55%)',  light: 'hsl(40,95%,92%)',  text: '#3a2800', label: 'Video'   },
-  reel:    { bg: 'hsl(161,58%,44%)', light: 'hsl(161,58%,92%)', text: '#fff',    label: 'Reel'    },
-  story:   { bg: 'hsl(268,60%,62%)', light: 'hsl(268,60%,94%)', text: '#fff',    label: 'Story'   },
+// Full Tailwind class strings — all must be complete for JIT scanning
+const TYPE_CELL: Record<ContentType, {
+  borderL: string; tint: string; bg: string; text: string; label: string
+  gradient: string; thumbBorder: string; strokeCls: string
+}> = {
+  graphic:  { borderL: 'border-l-coral',    tint: 'bg-coral-tint',    bg: 'bg-coral',    text: 'text-white',      label: 'Graphic', gradient: 'from-coral-tint to-coral/10',       thumbBorder: 'border-b-coral/20',    strokeCls: 'stroke-coral'    },
+  video:    { borderL: 'border-l-lemon',    tint: 'bg-lemon-tint',    bg: 'bg-lemon',    text: 'text-amber-900',  label: 'Video',   gradient: 'from-lemon-tint to-lemon/10',       thumbBorder: 'border-b-lemon/20',    strokeCls: 'stroke-lemon'    },
+  reel:     { borderL: 'border-l-mint',     tint: 'bg-mint-tint',     bg: 'bg-mint',     text: 'text-white',      label: 'Reel',    gradient: 'from-mint-tint to-mint/10',         thumbBorder: 'border-b-mint/20',     strokeCls: 'stroke-mint'     },
+  story:    { borderL: 'border-l-lavender', tint: 'bg-lavender-tint', bg: 'bg-lavender', text: 'text-white',      label: 'Story',   gradient: 'from-lavender-tint to-lavender/10', thumbBorder: 'border-b-lavender/20', strokeCls: 'stroke-lavender' },
 }
 
 const MONTHS     = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -64,7 +69,6 @@ export default function CalendarPage() {
   const today   = new Date(); today.setHours(0,0,0,0)
   const bodyRef = useRef<HTMLDivElement>(null)
 
-  const [mounted,    setMounted]    = useState(false)
   const [loading,    setLoading]    = useState(true)
   const [view,       setView]       = useState<ViewMode>('month')
   const [content,    setContent]    = useState<ContentRow[]>([])
@@ -75,36 +79,44 @@ export default function CalendarPage() {
   const [weekStart,  setWeekStart]  = useState(() => getMondayOf(today))
   const [dayDate,    setDayDate]    = useState(new Date(today))
 
-  const fetchRange = useCallback(async (from: string, to: string) => {
-    setLoading(true)
-    const supabase = createClient()
-    const [cRes, clRes] = await Promise.all([
-      supabase.from('content_pieces')
-        .select('id, title, type, status, scheduled_date, client_id, platforms')
-        .gte('scheduled_date', from).lte('scheduled_date', to),
-      supabase.from('clients').select('id, name, brand_color'),
-    ])
-    setContent(cRes.data || [])
-    setClients(clRes.data || [])
-    setLoading(false)
-    setMounted(true)
-  }, [])
-
   useEffect(() => {
+    let cancelled = false
+
+    async function loadRange(from: string, to: string) {
+      setLoading(true)
+      const supabase = createClient()
+      const [cRes, clRes] = await Promise.all([
+        supabase.from('content_pieces')
+          .select('id, title, type, status, scheduled_date, client_id, platforms')
+          .gte('scheduled_date', from).lte('scheduled_date', to),
+        supabase.from('clients').select('id, name, brand_color'),
+      ])
+
+      if (cancelled) return
+
+      setContent(cRes.data || [])
+      setClients(clRes.data || [])
+      setLoading(false)
+    }
+
     if (view === 'month') {
       const cells = buildMonthGrid(viewYear, viewMonth)
-      fetchRange(toStr(cells[0].date), toStr(cells[cells.length-1].date))
+      void loadRange(toStr(cells[0].date), toStr(cells[cells.length - 1].date))
     } else if (view === 'week') {
       const days = buildWeekDays(weekStart)
-      fetchRange(toStr(days[0]), toStr(days[6]))
+      void loadRange(toStr(days[0]), toStr(days[6]))
     } else {
-      fetchRange(toStr(dayDate), toStr(dayDate))
+      void loadRange(toStr(dayDate), toStr(dayDate))
     }
-  }, [view, viewMonth, viewYear, weekStart, dayDate, fetchRange])
+
+    return () => {
+      cancelled = true
+    }
+  }, [view, viewMonth, viewYear, weekStart, dayDate])
 
   useGSAP(() => {
     if (loading || !bodyRef.current) return
-    gsap.fromTo('.c-item',
+    gsap.fromTo('[data-animate="cal-item"]',
       { opacity: 0, y: 8 },
       { opacity: 1, y: 0, duration: 0.28, stagger: { amount: 0.18 }, ease: 'power2.out', clearProps: 'opacity,transform' }
     )
@@ -153,74 +165,105 @@ export default function CalendarPage() {
   }
 
   return (
-    <main className="page-main" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'hsl(42,30%,97%)', overflow: 'hidden' }}>
-      <style>{`
-        .no-scroll::-webkit-scrollbar{display:none}
-        .no-scroll{-ms-overflow-style:none;scrollbar-width:none}
-        @keyframes spin{to{transform:rotate(360deg)}}
-      `}</style>
+    <main className="page-main flex-1 min-w-0 flex flex-col bg-cream overflow-hidden">
 
       {/* ── Sticky header ── */}
-      <div style={{ background: '#0F1A14', flexShrink: 0, position: 'sticky', top: 0, zIndex: 20, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        {/* Row 1 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '14px 16px 0' }}>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: '0.58rem', color: 'hsl(140,7%,48%)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '1px' }}>Content</p>
-            <h1 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'hsl(42,22%,84%)', lineHeight: 1 }}>Calendar</h1>
+      <div className="bg-dark shrink-0 sticky top-0 z-20 border-b border-white/[0.05]">
+
+        {/* Row 1: title + nav + today */}
+        <div className="flex items-center gap-2 px-4 pt-[14px]">
+          <div className="flex-1">
+            <p className="text-[0.58rem] text-dark-muted tracking-[0.08em] uppercase mb-px">Content</p>
+            <h1 className="text-[1.1rem] font-extrabold text-dark-text leading-none">Calendar</h1>
           </div>
-          {/* Nav */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+
+          <div className="flex items-center gap-[5px]">
             <NavBtn onClick={() => navigate(-1)}>‹</NavBtn>
-            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'hsl(42,22%,84%)', minWidth: '104px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+            <span className="text-[0.78rem] font-bold text-dark-text min-w-[104px] text-center whitespace-nowrap">
               {headLabel()}
             </span>
             <NavBtn onClick={() => navigate(1)}>›</NavBtn>
           </div>
-          <button onClick={goToday} style={{ padding: '5px 10px', borderRadius: '99px', border: '1px solid rgba(255,255,255,0.14)', background: 'transparent', color: 'hsl(42,22%,76%)', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+
+          <button
+            onClick={goToday}
+            className="px-[10px] py-[5px] rounded-full border border-white/[0.14] bg-transparent text-dark-text/80 text-[0.68rem] font-semibold cursor-pointer whitespace-nowrap hover:bg-white/[0.07] transition-colors"
+          >
             Today
           </button>
         </div>
 
-        {/* Row 2: view tabs + stats */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 16px 0' }}>
-          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.07)', borderRadius: '10px', padding: '3px', gap: '2px' }}>
+        {/* Row 2: view toggle + stats */}
+        <div className="flex items-center gap-[10px] px-4 pt-[10px]">
+          <div className="flex bg-white/[0.07] rounded-[10px] p-[3px] gap-[2px]">
             {(['month','week','day'] as ViewMode[]).map(v => (
-              <button key={v} onClick={() => setView(v)} style={{
-                padding: '5px 13px', borderRadius: '7px', border: 'none', cursor: 'pointer',
-                background: view === v ? 'hsl(25,82%,60%)' : 'transparent',
-                color: view === v ? '#fff' : 'hsl(140,7%,48%)',
-                fontSize: '0.7rem', fontWeight: 700, textTransform: 'capitalize',
-                transition: 'background 0.15s, color 0.15s',
-                boxShadow: view === v ? '0 2px 8px hsla(25,82%,60%,0.4)' : 'none',
-              }}>
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={cn(
+                  "px-[13px] py-[5px] rounded-[7px] text-[0.7rem] font-bold capitalize cursor-pointer transition-[background,color] duration-150 border-0",
+                  view === v
+                    ? "bg-coral text-white shadow-[0_2px_8px_hsla(14,72%,62%,0.4)]"
+                    : "bg-transparent text-dark-muted hover:bg-white/[0.07]"
+                )}
+              >
                 {v}
               </button>
             ))}
           </div>
-          <div style={{ flex: 1 }} />
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <Chip n={statTotal}   label="total"  color="hsl(25,82%,60%)" />
-            <Chip n={statLive}    label="live"   color="hsl(161,58%,44%)" />
-            {statOverdue > 0 && <Chip n={statOverdue} label="late" color="hsl(4,75%,56%)" />}
+
+          <div className="flex-1" />
+
+          <div className="flex gap-[10px] items-center">
+            <StatChip n={statTotal}   label="total"  variant="coral" />
+            <StatChip n={statLive}    label="live"   variant="mint"  />
+            {statOverdue > 0 && <StatChip n={statOverdue} label="late" variant="danger" />}
           </div>
         </div>
 
         {/* Row 3: client filters */}
-        <div className="no-scroll" style={{ display: 'flex', gap: '6px', overflowX: 'auto', padding: '10px 16px 12px' }}>
-          <FPill label="All" active={!clientFil} color="hsl(25,82%,60%)" onClick={() => setClientFil(null)} />
+        <div className="scrollbar-hide flex gap-[6px] overflow-x-auto px-4 py-[10px] pb-3">
+          <button
+            onClick={() => setClientFil(null)}
+            className={cn(
+              "px-[11px] py-1 rounded-full text-[0.72rem] font-semibold cursor-pointer whitespace-nowrap shrink-0 transition-colors border-0",
+              !clientFil
+                ? "bg-coral text-white shadow-[0_2px_8px_hsla(14,72%,62%,0.4)]"
+                : "bg-white/[0.07] text-dark-muted hover:bg-white/[0.1]"
+            )}
+          >
+            All
+          </button>
           {clients.map(c => (
-            <FPill key={c.id} label={c.name} active={clientFil === c.id} color={c.brand_color}
-              onClick={() => setClientFil(clientFil === c.id ? null : c.id)} />
+            <button
+              key={c.id}
+              onClick={() => setClientFil(clientFil === c.id ? null : c.id)}
+              style={clientFil === c.id ? { '--client-color': c.brand_color } as CSSProperties : undefined}
+              className={cn(
+                "px-[11px] py-1 rounded-full text-[0.72rem] font-semibold cursor-pointer whitespace-nowrap shrink-0 transition-colors border-0",
+                clientFil === c.id
+                  ? "bg-[var(--client-color)] text-white"
+                  : "bg-white/[0.07] text-dark-muted hover:bg-white/[0.1]"
+              )}
+            >
+              {c.name}
+            </button>
           ))}
         </div>
       </div>
 
       {/* ── Body ── */}
-      <div ref={bodyRef} style={{ flex: 1, overflowY: view === 'week' ? 'hidden' : 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div
+        ref={bodyRef}
+        className={cn(
+          "flex-1 overflow-x-hidden flex flex-col",
+          view === 'week' ? "overflow-y-hidden" : "overflow-y-auto"
+        )}
+      >
         {loading ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
-            <div style={{ width: 28, height: 28, borderRadius: '50%', border: '3px solid hsl(25,82%,60%)', borderTopColor: 'transparent', animation: 'spin 0.7s linear infinite' }} />
-            <span style={{ fontSize: '0.8rem', color: 'hsl(24,10%,54%)' }}>Loading…</span>
+          <div className="flex-1 flex items-center justify-center gap-3">
+            <div className="w-7 h-7 rounded-full border-[3px] border-coral border-t-transparent animate-spin" />
+            <span className="text-[0.8rem] text-muted">Loading…</span>
           </div>
         ) : view === 'month' ? (
           <MonthView viewYear={viewYear} viewMonth={viewMonth} today={today} cmap={cmap} router={router} />
@@ -235,9 +278,7 @@ export default function CalendarPage() {
       {/* FAB */}
       <button
         onClick={() => router.push(view === 'day' ? `/brief/new?date=${toStr(dayDate)}` : '/brief/new')}
-        style={{ position: 'fixed', bottom: '88px', right: '20px', width: '50px', height: '50px', borderRadius: '50%', background: 'hsl(25,82%,60%)', border: 'none', cursor: 'pointer', boxShadow: '0 4px 20px hsla(25,82%,60%,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 40, fontSize: '24px', color: '#fff', lineHeight: 1, transition: 'transform 0.2s cubic-bezier(0.34,1.56,0.64,1)' }}
-        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.12)' }}
-        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = '' }}
+        className="fixed bottom-[88px] right-5 w-[50px] h-[50px] rounded-full bg-coral border-0 cursor-pointer shadow-[0_4px_20px_hsla(14,72%,62%,0.5)] flex items-center justify-center z-40 text-2xl text-white leading-none transition-transform hover:scale-110"
       >+</button>
     </main>
   )
@@ -252,73 +293,94 @@ function MonthView({ viewYear, viewMonth, today, cmap, router }: {
   const todayStr = toStr(today)
 
   return (
-    <div style={{ padding: '12px 12px 100px' }}>
+    <div className="p-3 pb-[100px]">
       {/* Day headers */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px' }}>
+      <div className="grid grid-cols-7 gap-1 mb-1">
         {DAYS_SHORT.map(d => (
-          <div key={d} style={{ textAlign: 'center', fontSize: '0.58rem', fontWeight: 700, color: 'hsl(24,10%,52%)', padding: '4px 0', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          <div key={d} className="text-center text-[0.58rem] font-bold text-muted py-1 tracking-[0.06em] uppercase">
             {d}
           </div>
         ))}
       </div>
 
-      {/* Calendar grid — fixed minHeight, no flex rows */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+      {/* Calendar grid */}
+      <div className="grid grid-cols-7 gap-1">
         {cells.map((cell, i) => {
-          const key     = toStr(cell.date)
-          const pieces  = cmap.get(key) || []
+          const key    = toStr(cell.date)
+          const pieces = cmap.get(key) || []
           const isToday = key === todayStr
-          const late    = pieces.some(p => p.status === 'overdue')
-          const shown   = pieces.slice(0, 2)
-          const more    = pieces.length - shown.length
+          const late   = pieces.some(p => p.status === 'overdue')
+          const shown  = pieces.slice(0, 2)
+          const more   = pieces.length - shown.length
 
           return (
             <div
               key={i}
-              className="c-item"
+              data-animate="cal-item"
               onClick={() => router.push(`/calendar/${key}`)}
-              style={{
-                minHeight: '82px', background: cell.inMonth ? (pieces.length ? '#fff' : 'hsl(42,22%,98%)') : 'hsl(42,14%,94%)',
-                borderRadius: '10px',
-                border: isToday ? '2px solid hsl(25,82%,58%)' : late ? '1.5px solid hsl(4,72%,74%)' : '1.5px solid hsl(38,14%,89%)',
-                padding: '6px 5px 4px', cursor: 'pointer',
-                opacity: cell.inMonth ? 1 : 0.38,
-                transition: 'transform 0.15s, box-shadow 0.15s',
-                position: 'relative', overflow: 'hidden',
-              }}
-              onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = '0 6px 16px rgba(0,0,0,0.09)' }}
-              onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = ''; el.style.boxShadow = '' }}
+              className={cn(
+                "min-h-[82px] rounded-[10px] p-[6px_5px_4px] cursor-pointer relative overflow-hidden",
+                "transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(0,0,0,0.09)]",
+                cell.inMonth
+                  ? pieces.length ? "bg-white" : "bg-cream/50"
+                  : "bg-island-2",
+                isToday
+                  ? "border-2 border-coral"
+                  : late
+                    ? "border border-danger/50"
+                    : "border border-border",
+                !cell.inMonth && "opacity-[0.38]",
+              )}
             >
               {/* Date circle */}
-              <div style={{ display: 'inline-flex', width: isToday ? '20px' : 'auto', height: isToday ? '20px' : 'auto', borderRadius: '50%', background: isToday ? 'hsl(25,82%,60%)' : 'transparent', alignItems: 'center', justifyContent: 'center', marginBottom: '4px', marginLeft: isToday ? '0' : '1px' }}>
-                <span style={{ fontSize: '0.68rem', fontWeight: isToday ? 800 : 500, color: isToday ? '#fff' : 'hsl(24,20%,22%)', lineHeight: 1 }}>
+              <div className={cn(
+                "inline-flex items-center justify-center mb-1",
+                isToday ? "w-5 h-5 rounded-full bg-coral" : "ml-px"
+              )}>
+                <span className={cn(
+                  "text-[0.68rem] leading-none",
+                  isToday ? "font-extrabold text-white" : "font-medium text-ink/80"
+                )}>
                   {cell.date.getDate()}
                 </span>
               </div>
 
-              {/* Pills */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {/* Content pills */}
+              <div className="flex flex-col gap-[2px]">
                 {shown.map(cp => {
-                  const cfg = TYPE_CFG[cp.type]
+                  const cfg = TYPE_CELL[cp.type]
                   return (
-                    <div key={cp.id} style={{ display: 'flex', alignItems: 'center', gap: '3px', borderLeft: `2.5px solid ${cfg.bg}`, background: cfg.light, borderRadius: '0 3px 3px 0', padding: '1.5px 4px' }}>
-                      <span style={{ fontSize: '0.5rem', fontWeight: 700, color: 'hsl(24,20%,18%)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.4 }}>
+                    <div
+                      key={cp.id}
+                      className={cn(
+                        "flex items-center gap-[3px] border-l-[2.5px] rounded-[0_3px_3px_0] px-1 py-[1.5px]",
+                        cfg.borderL, cfg.tint
+                      )}
+                    >
+                      <span className="text-[0.5rem] font-bold text-ink/80 overflow-hidden text-ellipsis whitespace-nowrap leading-[1.4]">
                         {cp.title.slice(0, 11)}{cp.title.length > 11 ? '…' : ''}
                       </span>
                     </div>
                   )
                 })}
-                {more > 0 && <span style={{ fontSize: '0.48rem', fontWeight: 700, color: 'hsl(25,60%,50%)', paddingLeft: '4px' }}>+{more}</span>}
+                {more > 0 && (
+                  <span className="text-[0.48rem] font-bold text-coral/80 pl-1">+{more}</span>
+                )}
                 {pieces.length === 0 && cell.inMonth && (
-                  <div style={{ opacity: 0.18, marginTop: '4px', display: 'flex', justifyContent: 'center' }}>
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="hsl(24,10%,44%)" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                  <div className="opacity-[0.18] mt-1 flex justify-center">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                      <path d="M8 3v10M3 8h10" className="stroke-muted" strokeWidth="1.8" strokeLinecap="round"/>
+                    </svg>
                   </div>
                 )}
               </div>
 
               {/* Bottom accent bar */}
               {pieces.length > 0 && (
-                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: late ? 'hsl(4,75%,56%)' : pieces.length >= 3 ? 'hsl(25,82%,60%)' : TYPE_CFG[pieces[0].type].bg, opacity: 0.65 }} />
+                <div className={cn(
+                  "absolute bottom-0 left-0 right-0 h-[3px] opacity-65",
+                  late ? "bg-danger" : pieces.length >= 3 ? "bg-coral" : TYPE_CELL[pieces[0].type].bg
+                )} />
               )}
             </div>
           )
@@ -326,16 +388,16 @@ function MonthView({ viewYear, viewMonth, today, cmap, router }: {
       </div>
 
       {/* Legend */}
-      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '14px', padding: '0 2px' }}>
-        {(Object.entries(TYPE_CFG) as [ContentType, typeof TYPE_CFG[ContentType]][]).map(([t, cfg]) => (
-          <div key={t} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: cfg.bg }} />
-            <span style={{ fontSize: '0.6rem', fontWeight: 600, color: 'hsl(24,10%,44%)' }}>{cfg.label}</span>
+      <div className="flex gap-3 flex-wrap mt-[14px] px-0.5">
+        {(Object.entries(TYPE_CELL) as [ContentType, typeof TYPE_CELL[ContentType]][]).map(([t, cfg]) => (
+          <div key={t} className="flex items-center gap-1">
+            <div className={cn("w-2 h-2 rounded-[2px]", cfg.bg)} />
+            <span className="text-[0.6rem] font-semibold text-muted">{cfg.label}</span>
           </div>
         ))}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <div style={{ width: '8px', height: '8px', borderRadius: '2px', border: '1.5px solid hsl(4,75%,56%)' }} />
-          <span style={{ fontSize: '0.6rem', fontWeight: 600, color: 'hsl(24,10%,44%)' }}>Overdue</span>
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 rounded-[2px] border border-danger/60" />
+          <span className="text-[0.6rem] font-semibold text-muted">Overdue</span>
         </div>
       </div>
     </div>
@@ -352,8 +414,11 @@ function WeekView({ weekStart, today, cmap, clients, router, onDayClick }: {
   const todayStr = toStr(today)
 
   return (
-    <div className="no-scroll" style={{ flex: 1, overflowX: 'auto', overflowY: 'auto', padding: '12px 12px 100px', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(148px, 1fr))', gap: '6px', minWidth: '700px', flex: 1 }}>
+    <div className="scrollbar-hide flex-1 overflow-x-auto overflow-y-auto p-3 pb-[100px] flex flex-col">
+      <div
+        className="grid gap-[6px] min-w-[700px] flex-1"
+        style={{ gridTemplateColumns: 'repeat(7, minmax(148px, 1fr))' }}
+      >
         {days.map((day, di) => {
           const key     = toStr(day)
           const isToday = key === todayStr
@@ -361,69 +426,98 @@ function WeekView({ weekStart, today, cmap, clients, router, onDayClick }: {
           const pieces  = cmap.get(key) || []
 
           return (
-            <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-              {/* Day header */}
-              <div style={{ position: 'sticky', top: '-12px', zIndex: 10, background: 'hsl(42,30%,97%)', paddingBottom: '0' }}>
+            <div key={key} className="flex flex-col">
+              {/* Day header — sticky */}
+              <div className="sticky top-[-12px] z-10 bg-cream">
                 <button
                   onClick={() => onDayClick(day)}
-                  style={{
-                    padding: '10px 8px', borderRadius: '12px 12px 0 0',
-                    background: isToday ? 'hsl(25,82%,60%)' : isWknd ? 'hsl(42,14%,90%)' : '#fff',
-                    border: isToday ? 'none' : `1.5px solid hsl(38,14%,${isWknd ? '84' : '90'}%)`,
-                    borderBottom: 'none', cursor: 'pointer', textAlign: 'center', width: '100%',
-                    display: 'block'
-                  }}>
-                <p style={{ fontSize: '0.58rem', fontWeight: 700, color: isToday ? 'rgba(255,255,255,0.75)' : 'hsl(24,10%,52%)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '3px' }}>
-                  {DAYS_SHORT[di]}
-                </p>
-                <p style={{ fontSize: '1.25rem', fontWeight: 800, color: isToday ? '#fff' : 'hsl(24,20%,14%)', lineHeight: 1 }}>
-                  {day.getDate()}
-                </p>
-              </button>
+                  className={cn(
+                    "w-full px-2 py-[10px] rounded-t-[12px] text-center cursor-pointer",
+                    "border border-b-0 transition-colors",
+                    isToday
+                      ? "bg-coral border-transparent"
+                      : isWknd
+                        ? "bg-island-2 border-border/70 hover:bg-island-2/80"
+                        : "bg-white border-border hover:bg-cream/60"
+                  )}
+                >
+                  <p className={cn(
+                    "text-[0.58rem] font-bold uppercase tracking-[0.07em] mb-[3px]",
+                    isToday ? "text-white/75" : "text-muted"
+                  )}>
+                    {DAYS_SHORT[di]}
+                  </p>
+                  <p className={cn(
+                    "text-[1.25rem] font-extrabold leading-none",
+                    isToday ? "text-white" : "text-ink/90"
+                  )}>
+                    {day.getDate()}
+                  </p>
+                </button>
               </div>
 
-              {/* Day Content */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', padding: '6px', background: isToday ? 'hsl(25,82%,98%)' : isWknd ? 'hsl(42,14%,95%)' : 'hsl(42,22%,97%)', borderRadius: '0 0 12px 12px', border: isToday ? '1.5px solid hsl(25,82%,78%)' : `1.5px solid hsl(38,14%,${isWknd ? '84' : '90'}%)`, borderTop: 'none', flex: 1, minHeight: '80px' }}>
+              {/* Day content column */}
+              <div className={cn(
+                "flex flex-col gap-[5px] p-[6px] rounded-b-[12px] border border-t-0 flex-1 min-h-[80px]",
+                isToday
+                  ? "bg-coral/5 border-coral/40"
+                  : isWknd
+                    ? "bg-island-2/60 border-border/70"
+                    : "bg-cream/30 border-border"
+              )}>
                 {pieces.length === 0 ? (
                   <button
                     onClick={() => router.push(`/brief/new?date=${key}`)}
-                    style={{ flex: 1, minHeight: '60px', borderRadius: '8px', border: '1.5px dashed hsl(38,14%,82%)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'hsl(24,10%,62%)', fontSize: '1.1rem', transition: 'background 0.12s' }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'hsl(38,14%,93%)' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
+                    className="flex-1 min-h-[60px] rounded-lg border border-dashed border-border bg-transparent cursor-pointer flex items-center justify-center text-muted text-lg transition-colors hover:bg-island-2/50"
                   >+</button>
                 ) : (
                   pieces.map(cp => {
-                    const cfg    = TYPE_CFG[cp.type]
+                    const cfg    = TYPE_CELL[cp.type]
                     const client = clients.find(c => c.id === cp.client_id)
                     const late   = cp.status === 'overdue'
                     return (
                       <div
                         key={cp.id}
-                        className="c-item"
+                        data-animate="cal-item"
                         onClick={() => router.push(`/brief/${cp.id}`)}
-                        style={{ borderRadius: '10px', background: '#fff', border: late ? '1.5px solid hsl(4,72%,74%)' : '1.5px solid hsl(38,14%,90%)', overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' }}
-                        onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = `0 6px 18px ${cfg.bg}28` }}
-                        onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = ''; el.style.boxShadow = '' }}
+                        className={cn(
+                          "rounded-[10px] bg-white overflow-hidden cursor-pointer",
+                          "transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5",
+                          late
+                            ? "border border-danger/50 hover:shadow-[0_6px_18px_hsla(4,75%,56%,0.16)]"
+                            : "border border-border hover:shadow-[0_6px_18px_rgba(0,0,0,0.08)]"
+                        )}
                       >
                         {/* Thumbnail area */}
-                        <div style={{ height: '64px', background: `linear-gradient(135deg, ${cfg.light} 0%, ${cfg.bg}18 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: `2px solid ${cfg.bg}30`, position: 'relative' }}>
-                          <TypeGlyph type={cp.type} color={cfg.bg} />
+                        <div className={cn(
+                          "h-16 bg-gradient-to-br flex items-center justify-center border-b-2 relative",
+                          cfg.gradient, cfg.thumbBorder
+                        )}>
+                          <TypeGlyph type={cp.type} />
                           {late && (
-                            <div style={{ position: 'absolute', top: '5px', right: '5px', width: '16px', height: '16px', borderRadius: '50%', background: 'hsl(4,75%,56%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <span style={{ fontSize: '0.55rem', color: '#fff', fontWeight: 900 }}>!</span>
+                            <div className="absolute top-[5px] right-[5px] w-4 h-4 rounded-full bg-danger flex items-center justify-center">
+                              <span className="text-[0.55rem] text-white font-black">!</span>
                             </div>
                           )}
                         </div>
-                        <div style={{ padding: '7px 8px 6px' }}>
-                          <p style={{ fontSize: '0.68rem', fontWeight: 700, color: 'hsl(24,20%,14%)', lineHeight: 1.3, marginBottom: '5px', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        {/* Card body */}
+                        <div className="p-[7px_8px_6px]">
+                          <p className="text-[0.68rem] font-bold text-ink/90 leading-[1.3] mb-[5px] line-clamp-2">
                             {cp.title}
                           </p>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span style={{ padding: '1px 5px', borderRadius: '4px', background: cfg.bg, color: cfg.text, fontSize: '0.48rem', fontWeight: 700 }}>{cfg.label}</span>
+                          <div className="flex items-center gap-1">
+                            <span className={cn("px-[5px] py-px rounded-[4px] text-[0.48rem] font-bold", cfg.bg, cfg.text)}>
+                              {cfg.label}
+                            </span>
                             {client && (
                               <>
-                                <div style={{ width: 5, height: 5, borderRadius: '50%', background: client.brand_color, flexShrink: 0 }} />
-                                <span style={{ fontSize: '0.5rem', color: 'hsl(24,10%,52%)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{client.name}</span>
+                                <div
+                                  className="w-[5px] h-[5px] rounded-full shrink-0"
+                                  style={{ background: client.brand_color }}
+                                />
+                                <span className="text-[0.5rem] text-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1">
+                                  {client.name}
+                                </span>
                               </>
                             )}
                           </div>
@@ -453,79 +547,106 @@ function DayViewInline({ dayDate, today, cmap, clients, router }: {
   const late    = pieces.filter(p => p.status === 'overdue').length
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '16px', paddingBottom: '100px' }}>
+    <div className="flex-1 overflow-y-auto p-4 pb-[100px]">
       {/* Date card */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '20px', background: '#fff', borderRadius: '16px', padding: '16px', border: isToday ? '2px solid hsl(25,82%,60%)' : '1.5px solid hsl(38,14%,90%)' }}>
-        <div style={{ width: '54px', height: '54px', borderRadius: '14px', background: isToday ? 'hsl(25,82%,60%)' : isPast ? 'hsl(42,18%,88%)' : 'hsl(200,82%,92%)', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <p style={{ fontSize: '0.5rem', fontWeight: 700, color: isToday ? 'rgba(255,255,255,0.75)' : 'hsl(24,10%,48%)', textTransform: 'uppercase', letterSpacing: '0.07em', lineHeight: 1 }}>
+      <div className={cn(
+        "flex items-center gap-[14px] mb-5 bg-white rounded-2xl p-4",
+        isToday ? "border-2 border-coral" : "border border-border"
+      )}>
+        <div className={cn(
+          "w-[54px] h-[54px] rounded-[14px] shrink-0 flex flex-col items-center justify-center",
+          isToday ? "bg-coral" : isPast ? "bg-island-2" : "bg-sky-tint"
+        )}>
+          <p className={cn(
+            "text-[0.5rem] font-bold uppercase tracking-[0.07em] leading-none",
+            isToday ? "text-white/75" : "text-muted"
+          )}>
             {dayDate.toLocaleDateString('en-US', { weekday: 'short' })}
           </p>
-          <p style={{ fontSize: '1.5rem', fontWeight: 800, color: isToday ? '#fff' : 'hsl(24,20%,16%)', lineHeight: 1.1 }}>
+          <p className={cn(
+            "text-[1.5rem] font-extrabold leading-[1.1]",
+            isToday ? "text-white" : "text-ink"
+          )}>
             {dayDate.getDate()}
           </p>
         </div>
-        <div style={{ flex: 1 }}>
-          <p style={{ fontSize: '0.95rem', fontWeight: 800, color: 'hsl(24,20%,11%)', marginBottom: '3px' }}>
+
+        <div className="flex-1">
+          <p className="text-[0.95rem] font-extrabold text-ink mb-[3px]">
             {dayDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
           </p>
-          <p style={{ fontSize: '0.7rem', color: 'hsl(24,10%,52%)' }}>
+          <p className="text-[0.7rem] text-muted">
             {pieces.length} post{pieces.length !== 1 ? 's' : ''} scheduled
             {late > 0 ? ` · ${late} overdue` : isToday ? ' · Today' : isPast ? ' · Past' : ' · Upcoming'}
           </p>
         </div>
+
         <button
           onClick={() => router.push(`/brief/new?date=${dateStr}`)}
-          style={{ padding: '8px 14px', borderRadius: '10px', background: 'hsl(25,82%,60%)', border: 'none', color: '#fff', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', flexShrink: 0, boxShadow: '0 3px 10px hsla(25,82%,60%,0.35)' }}
-        >+ Add</button>
+          className="px-[14px] py-2 rounded-[10px] bg-coral border-0 text-white text-[0.72rem] font-bold shrink-0 shadow-[0_3px_10px_hsla(14,72%,62%,0.35)] cursor-pointer hover:bg-coral/90 transition-colors"
+        >
+          + Add
+        </button>
       </div>
 
       {pieces.length === 0 ? (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 20px', gap: '12px' }}>
-          <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'hsl(42,18%,94%)', border: '1.5px dashed hsl(38,14%,85%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.25 }}>
-              <rect x="3" y="5" width="18" height="17" rx="3" stroke="hsl(24,10%,44%)" strokeWidth="1.5"/>
-              <path d="M3 10h18M8 3v4M16 3v4" stroke="hsl(24,10%,44%)" strokeWidth="1.5" strokeLinecap="round"/>
+        <div className="flex flex-col items-center p-10 gap-3">
+          <div className="w-16 h-16 rounded-2xl bg-island-2 border border-dashed border-border flex items-center justify-center">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="opacity-25">
+              <rect x="3" y="5" width="18" height="17" rx="3" className="stroke-muted" strokeWidth="1.5"/>
+              <path d="M3 10h18M8 3v4M16 3v4" className="stroke-muted" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
           </div>
-          <p style={{ fontSize: '0.85rem', fontWeight: 700, color: 'hsl(24,10%,44%)' }}>Nothing scheduled</p>
-          <button onClick={() => router.push(`/brief/new?date=${dateStr}`)} style={{ padding: '9px 20px', borderRadius: '10px', background: 'hsl(25,82%,60%)', border: 'none', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', boxShadow: '0 4px 12px hsla(25,82%,60%,0.3)' }}>
+          <p className="text-[0.85rem] font-bold text-muted">Nothing scheduled</p>
+          <button
+            onClick={() => router.push(`/brief/new?date=${dateStr}`)}
+            className="px-5 py-[9px] rounded-[10px] bg-coral border-0 text-white font-bold text-[0.78rem] cursor-pointer shadow-[0_4px_12px_hsla(14,72%,62%,0.3)] hover:bg-coral/90 transition-colors"
+          >
             + Schedule Content
           </button>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div className="flex flex-col gap-[10px]">
           {pieces.map(cp => {
-            const cfg    = TYPE_CFG[cp.type]
+            const cfg    = TYPE_CELL[cp.type]
             const client = clients.find(c => c.id === cp.client_id)
             const isLate = cp.status === 'overdue'
             return (
               <div
                 key={cp.id}
-                className="c-item"
+                data-animate="cal-item"
                 onClick={() => router.push(`/brief/${cp.id}`)}
-                style={{ background: '#fff', borderRadius: '14px', border: isLate ? '1.5px solid hsl(4,72%,74%)' : '1.5px solid hsl(38,14%,90%)', overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' }}
-                onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = `0 8px 24px ${cfg.bg}22` }}
-                onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = ''; el.style.boxShadow = '' }}
+                className={cn(
+                  "bg-white rounded-[14px] overflow-hidden cursor-pointer",
+                  "transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5",
+                  isLate
+                    ? "border border-danger/50 hover:shadow-[0_8px_24px_hsla(4,75%,56%,0.13)]"
+                    : "border border-border hover:shadow-[0_8px_24px_rgba(0,0,0,0.07)]"
+                )}
               >
-                <div style={{ height: '5px', background: cfg.bg }} />
-                <div style={{ padding: '14px 16px', display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: cfg.light, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <TypeGlyph type={cp.type} color={cfg.bg} />
+                <div className={cn("h-[5px]", cfg.bg)} />
+                <div className="p-[14px_16px] flex gap-[14px] items-start">
+                  <div className={cn("w-12 h-12 rounded-xl shrink-0 flex items-center justify-center", cfg.tint)}>
+                    <TypeGlyph type={cp.type} />
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: '0.9rem', fontWeight: 800, color: 'hsl(24,20%,11%)', lineHeight: 1.3, marginBottom: '7px' }}>{cp.title}</p>
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span style={{ padding: '2px 8px', borderRadius: '99px', background: cfg.bg, color: cfg.text, fontSize: '0.6rem', fontWeight: 700 }}>{cfg.label}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[0.9rem] font-extrabold text-ink leading-[1.3] mb-[7px]">{cp.title}</p>
+                    <div className="flex gap-[6px] items-center flex-wrap">
+                      <span className={cn("px-2 py-0.5 rounded-full text-[0.6rem] font-bold", cfg.bg, cfg.text)}>
+                        {cfg.label}
+                      </span>
                       {client && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <div style={{ width: 5, height: 5, borderRadius: '50%', background: client.brand_color }} />
-                          <span style={{ fontSize: '0.65rem', color: 'hsl(24,10%,52%)' }}>{client.name}</span>
+                        <div className="flex items-center gap-1">
+                          <div className="w-[5px] h-[5px] rounded-full" style={{ background: client.brand_color }} />
+                          <span className="text-[0.65rem] text-muted">{client.name}</span>
                         </div>
                       )}
                       {cp.platforms.slice(0,2).map(p => (
-                        <span key={p} style={{ padding: '2px 7px', borderRadius: '99px', background: 'hsl(42,18%,92%)', fontSize: '0.58rem', fontWeight: 600, color: 'hsl(24,10%,44%)', textTransform: 'capitalize' }}>{p}</span>
+                        <span key={p} className="px-[7px] py-0.5 rounded-full bg-island-2 text-[0.58rem] font-semibold text-muted capitalize">{p}</span>
                       ))}
-                      {isLate && <span style={{ padding: '2px 7px', borderRadius: '99px', background: 'hsl(4,72%,93%)', color: 'hsl(4,72%,42%)', fontSize: '0.58rem', fontWeight: 700 }}>Overdue</span>}
+                      {isLate && (
+                        <span className="px-[7px] py-0.5 rounded-full bg-danger/10 text-danger text-[0.58rem] font-bold">Overdue</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -540,18 +661,19 @@ function DayViewInline({ dayDate, today, cmap, clients, router }: {
 
 // ─── Shared helpers ────────────────────────────────────────────────────────────
 
-function TypeGlyph({ type, color, small }: { type: ContentType; color: string; small?: boolean }) {
+function TypeGlyph({ type, small }: { type: ContentType; small?: boolean }) {
   const s = small ? 18 : 24
+  const cls = TYPE_CELL[type].strokeCls
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ opacity: 0.65 }}>
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" className="opacity-65">
       {type === 'graphic' ? (
-        <><rect x="3" y="3" width="18" height="18" rx="4" stroke={color} strokeWidth="1.6"/><circle cx="8.5" cy="8.5" r="2" stroke={color} strokeWidth="1.4"/><path d="M3 16l5-4 4 3 3-2.5 6 5" stroke={color} strokeWidth="1.4" strokeLinecap="round"/></>
+        <><rect x="3" y="3" width="18" height="18" rx="4" className={cls} strokeWidth="1.6"/><circle cx="8.5" cy="8.5" r="2" className={cls} strokeWidth="1.4"/><path d="M3 16l5-4 4 3 3-2.5 6 5" className={cls} strokeWidth="1.4" strokeLinecap="round"/></>
       ) : type === 'video' ? (
-        <><rect x="2" y="5" width="20" height="14" rx="4" stroke={color} strokeWidth="1.6"/><path d="M10 9l6 3-6 3V9z" fill={color} opacity="0.6"/></>
+        <><rect x="2" y="5" width="20" height="14" rx="4" className={cls} strokeWidth="1.6"/><path d="M10 9l6 3-6 3V9z" className={cn(cls, 'fill-lemon/60')} /></>
       ) : type === 'reel' ? (
-        <><circle cx="12" cy="12" r="9" stroke={color} strokeWidth="1.6"/><circle cx="12" cy="12" r="3" stroke={color} strokeWidth="1.4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" stroke={color} strokeWidth="1.4" strokeLinecap="round"/></>
+        <><circle cx="12" cy="12" r="9" className={cls} strokeWidth="1.6"/><circle cx="12" cy="12" r="3" className={cls} strokeWidth="1.4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" className={cls} strokeWidth="1.4" strokeLinecap="round"/></>
       ) : (
-        <><rect x="6" y="2" width="12" height="20" rx="3" stroke={color} strokeWidth="1.6"/><path d="M9 7h6M9 11h6M9 15h4" stroke={color} strokeWidth="1.4" strokeLinecap="round"/></>
+        <><rect x="6" y="2" width="12" height="20" rx="3" className={cls} strokeWidth="1.6"/><path d="M9 7h6M9 11h6M9 15h4" className={cls} strokeWidth="1.4" strokeLinecap="round"/></>
       )}
     </svg>
   )
@@ -559,28 +681,22 @@ function TypeGlyph({ type, color, small }: { type: ContentType; color: string; s
 
 function NavBtn({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)', color: 'hsl(42,22%,80%)', cursor: 'pointer', fontSize: '15px', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.12s' }}
-      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.12)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)' }}>
+    <button
+      onClick={onClick}
+      className="w-7 h-7 rounded-full border border-white/[0.12] bg-white/[0.05] text-dark-text cursor-pointer text-[15px] leading-none flex items-center justify-center transition-colors hover:bg-white/[0.12]"
+    >
       {children}
     </button>
   )
 }
 
-function Chip({ n, label, color }: { n: number; label: string; color: string }) {
+function StatChip({ n, label, variant }: { n: number; label: string; variant: 'coral' | 'mint' | 'danger' }) {
+  const dot = { coral: 'bg-coral', mint: 'bg-mint', danger: 'bg-danger' }[variant]
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-      <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: color }} />
-      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'hsl(42,22%,80%)' }}>{n}</span>
-      <span style={{ fontSize: '0.6rem', color: 'hsl(140,7%,44%)' }}>{label}</span>
+    <div className="flex items-center gap-1">
+      <div className={cn("w-[7px] h-[7px] rounded-full", dot)} />
+      <span className="text-[0.72rem] font-bold text-dark-text">{n}</span>
+      <span className="text-[0.6rem] text-dark-muted">{label}</span>
     </div>
-  )
-}
-
-function FPill({ label, active, color, onClick }: { label: string; active: boolean; color: string; onClick: () => void }) {
-  return (
-    <button onClick={onClick} style={{ padding: '4px 11px', borderRadius: '99px', border: 'none', background: active ? color : 'rgba(255,255,255,0.07)', color: active ? '#fff' : 'hsl(140,7%,48%)', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'background 0.12s', boxShadow: active ? `0 2px 8px ${color}44` : 'none' }}>
-      {label}
-    </button>
   )
 }

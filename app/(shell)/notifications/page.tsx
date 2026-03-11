@@ -4,21 +4,90 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { useRouter } from 'next/navigation'
+
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/supabase/useUser'
-import type { Role } from '@/lib/types'
 
 gsap.registerPlugin(useGSAP)
 
-type NotifType = 'task-assigned' | 'task-overdue' | 'approval-needed' | 'client-note' | 'plan-reminder' | 'content-approved'
+type NotifType =
+  | 'task-assigned'
+  | 'task-overdue'
+  | 'approval-needed'
+  | 'client-note'
+  | 'plan-reminder'
+  | 'content-approved'
 
-const TYPE_CFG: Record<NotifType, { icon: string; color: string; bg: string; label: string }> = {
-  'task-assigned':    { icon: '📋', color: 'hsl(200,82%,48%)', bg: 'hsl(200,82%,93%)', label: 'Assigned' },
-  'task-overdue':     { icon: '⚠️', color: 'hsl(4,72%,50%)',   bg: 'hsl(4,72%,93%)',   label: 'Overdue'  },
-  'approval-needed':  { icon: '👀', color: 'hsl(25,82%,52%)',  bg: 'hsl(25,82%,93%)',  label: 'Review'   },
-  'client-note':      { icon: '💬', color: 'hsl(268,60%,60%)', bg: 'hsl(268,60%,93%)', label: 'Client'   },
-  'plan-reminder':    { icon: '📅', color: 'hsl(161,58%,40%)', bg: 'hsl(161,58%,92%)', label: 'Reminder' },
-  'content-approved': { icon: '✅', color: 'hsl(154,55%,38%)', bg: 'hsl(154,55%,90%)', label: 'Approved' },
+const TYPE_CFG: Record<
+  NotifType,
+  {
+    icon: string
+    label: string
+    accentClass: string
+    iconClass: string
+    badgeClass: string
+    readBorderClass: string
+    unreadBorderClass: string
+  }
+> = {
+  'task-assigned': {
+    icon: '📋',
+    label: 'Assigned',
+    accentClass: 'text-sky',
+    iconClass: 'bg-sky/15 text-sky',
+    badgeClass: 'bg-sky/15 text-sky',
+    readBorderClass: 'border-border',
+    unreadBorderClass: 'border-sky/30',
+  },
+  'task-overdue': {
+    icon: '⚠️',
+    label: 'Overdue',
+    accentClass: 'text-danger',
+    iconClass: 'bg-danger/15 text-danger',
+    badgeClass: 'bg-danger/15 text-danger',
+    readBorderClass: 'border-border',
+    unreadBorderClass: 'border-danger/30',
+  },
+  'approval-needed': {
+    icon: '👀',
+    label: 'Review',
+    accentClass: 'text-coral',
+    iconClass: 'bg-coral/15 text-coral',
+    badgeClass: 'bg-coral/15 text-coral',
+    readBorderClass: 'border-border',
+    unreadBorderClass: 'border-coral/30',
+  },
+  'client-note': {
+    icon: '💬',
+    label: 'Client',
+    accentClass: 'text-lavender',
+    iconClass: 'bg-lavender/15 text-lavender',
+    badgeClass: 'bg-lavender/15 text-lavender',
+    readBorderClass: 'border-border',
+    unreadBorderClass: 'border-lavender/30',
+  },
+  'plan-reminder': {
+    icon: '🗓',
+    label: 'Reminder',
+    accentClass: 'text-mint',
+    iconClass: 'bg-mint/15 text-mint',
+    badgeClass: 'bg-mint/15 text-mint',
+    readBorderClass: 'border-border',
+    unreadBorderClass: 'border-mint/30',
+  },
+  'content-approved': {
+    icon: '✅',
+    label: 'Approved',
+    accentClass: 'text-success',
+    iconClass: 'bg-success/15 text-success',
+    badgeClass: 'bg-success/15 text-success',
+    readBorderClass: 'border-border',
+    unreadBorderClass: 'border-success/30',
+  },
 }
 
 type NotifRow = {
@@ -41,15 +110,42 @@ function timeAgo(s: string): string {
   return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-export default function NotificationsPage() {
-  const router       = useRouter()
-  const containerRef = useRef<HTMLDivElement>(null)
-  const { user }     = useUser()
+function FilterChip({
+  active,
+  highlight,
+  children,
+  onClick,
+}: {
+  active: boolean
+  highlight?: boolean
+  children: React.ReactNode
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap transition-colors',
+        active && highlight && 'bg-danger text-white',
+        active && !highlight && 'bg-coral text-white',
+        !active && highlight && 'bg-white/7 text-danger',
+        !active && !highlight && 'bg-white/7 text-dark-muted'
+      )}
+    >
+      {children}
+    </button>
+  )
+}
 
-  const [notifs,   setNotifs]   = useState<NotifRow[]>([])
-  const [filter,   setFilter]   = useState<'all' | 'unread' | NotifType>('all')
-  const [mounted,  setMounted]  = useState(false)
-  const [toast,    setToast]    = useState<string | null>(null)
+export default function NotificationsPage() {
+  const router = useRouter()
+  const containerRef = useRef<HTMLDivElement>(null)
+  useUser()
+
+  const [notifs, setNotifs] = useState<NotifRow[]>([])
+  const [filter, setFilter] = useState<'all' | 'unread' | NotifType>('all')
+  const [mounted, setMounted] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function showToast(msg: string) {
@@ -71,29 +167,31 @@ export default function NotificationsPage() {
     }
     load()
 
-    // Realtime: prepend new notifications as they arrive
     const channel = supabase
       .channel('notif-page')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, payload => {
         const n = payload.new as NotifRow
         setNotifs(prev => [n, ...prev])
         showToast(n.title)
       })
       .subscribe()
 
-    return () => { channel.unsubscribe() }
+    return () => {
+      channel.unsubscribe()
+    }
   }, [])
 
   useGSAP(() => {
     if (!mounted || !containerRef.current) return
-    gsap.fromTo('.notif-item',
+    gsap.fromTo(
+      '[data-animate="notif-item"]',
       { x: -12, opacity: 0 },
       { x: 0, opacity: 1, duration: 0.3, stagger: 0.05, ease: 'power2.out', clearProps: 'all' }
     )
   }, { dependencies: [mounted, filter], scope: containerRef })
 
   const markRead = useCallback(async (id: string) => {
-    setNotifs(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+    setNotifs(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)))
     const supabase = createClient()
     await supabase.from('notifications').update({ read: true }).eq('id', id)
   }, [])
@@ -114,129 +212,174 @@ export default function NotificationsPage() {
     return true
   })
 
-  // Group by date
-  const todayStr     = new Date().toDateString()
-  const yesterdayStr = new Date(Date.now() - 86400000).toDateString()
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  const todayStr = today.toDateString()
+  const yesterdayStr = yesterday.toDateString()
   const groups: { label: string; items: NotifRow[] }[] = [
-    { label: 'Today',     items: displayed.filter(n => new Date(n.created_at).toDateString() === todayStr) },
+    { label: 'Today', items: displayed.filter(n => new Date(n.created_at).toDateString() === todayStr) },
     { label: 'Yesterday', items: displayed.filter(n => new Date(n.created_at).toDateString() === yesterdayStr) },
-    { label: 'Earlier',   items: displayed.filter(n => new Date(n.created_at).toDateString() !== todayStr && new Date(n.created_at).toDateString() !== yesterdayStr) },
+    {
+      label: 'Earlier',
+      items: displayed.filter(n => {
+        const date = new Date(n.created_at).toDateString()
+        return date !== todayStr && date !== yesterdayStr
+      }),
+    },
   ].filter(g => g.items.length > 0)
 
-  const filterTypes: (NotifType | 'all' | 'unread')[] = ['all', 'unread', 'task-assigned', 'task-overdue', 'approval-needed', 'client-note', 'plan-reminder', 'content-approved']
+  const filterTypes: (NotifType | 'all' | 'unread')[] = [
+    'all',
+    'unread',
+    'task-assigned',
+    'task-overdue',
+    'approval-needed',
+    'client-note',
+    'plan-reminder',
+    'content-approved',
+  ]
 
   return (
-    <main className="page-main" style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-
-      {/* Live toast */}
+    <main className="page-main relative flex min-w-0 flex-1 flex-col overflow-y-auto">
       {toast && (
-        <div style={{
-          position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 999, background: '#0F1A14', color: 'hsl(42,22%,88%)',
-          padding: '10px 18px', borderRadius: '9999px', fontSize: '0.8rem', fontWeight: 600,
-          boxShadow: '0 4px 20px rgba(15,26,20,0.4)', whiteSpace: 'nowrap',
-          display: 'flex', alignItems: 'center', gap: '8px',
-        }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'hsl(25,82%,60%)', display: 'inline-block' }} />
+        <div className="fixed top-4 left-1/2 z-[999] flex -translate-x-1/2 items-center gap-2 rounded-full bg-dark px-4 py-2 text-sm font-semibold text-dark-text shadow-[0_4px_20px_rgba(15,26,20,0.4)]">
+          <span className="inline-block size-2 rounded-full bg-coral" />
           {toast}
         </div>
       )}
 
-      <div style={{ background: '#0F1A14', padding: '18px 20px 14px', flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: '0.656rem', color: 'hsl(140,7%,48%)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '1px' }}>Inbox</p>
-            <h1 style={{ fontSize: '1.167rem', fontWeight: 800, color: 'hsl(42,22%,84%)', lineHeight: 1 }}>Notifications</h1>
+      <section className="border-b border-white/4 bg-dark px-5 pt-[18px] pb-[14px]">
+        <div className="mb-3 flex items-center gap-3">
+          <div className="flex-1">
+            <p className="mb-px text-2xs uppercase tracking-[0.08em] text-dark-muted">Inbox</p>
+            <h1 className="text-md font-extrabold leading-none text-dark-text">Notifications</h1>
           </div>
           {unreadCount > 0 && (
-            <button onClick={markAllRead} style={{ padding: '5px 12px', borderRadius: '9999px', border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: 'hsl(42,22%,84%)', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={markAllRead}
+              className="rounded-full border-white/12 bg-transparent text-dark-text hover:bg-white/6 hover:text-dark-text"
+            >
               Mark all read
-            </button>
+            </Button>
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5">
           {filterTypes.map(f => {
             const isUnread = f === 'unread'
             const label = f === 'all' ? 'All' : isUnread ? `Unread (${unreadCount})` : TYPE_CFG[f as NotifType]?.label || f
-            const active = filter === f
-            const highlight = isUnread && unreadCount > 0
             return (
-              <button key={f} onClick={() => setFilter(f as typeof filter)} style={{
-                padding: '4px 11px', borderRadius: '9999px', border: 'none', cursor: 'pointer',
-                background: active ? (highlight ? 'hsl(4,72%,50%)' : 'hsl(25,82%,60%)') : 'rgba(255,255,255,0.07)',
-                color: active ? '#fff' : highlight ? 'hsl(4,72%,65%)' : 'hsl(140,7%,48%)',
-                fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap', transition: 'background 0.15s',
-              }}>
+              <FilterChip
+                key={f}
+                active={filter === f}
+                highlight={isUnread && unreadCount > 0}
+                onClick={() => setFilter(f as typeof filter)}
+              >
                 {label}
-              </button>
+              </FilterChip>
             )
           })}
         </div>
-      </div>
+      </section>
 
-      <div ref={containerRef} style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div ref={containerRef} className="flex flex-1 flex-col gap-5 p-4">
         {groups.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 20px', gap: '12px' }}>
-            <div style={{ width: '64px', height: '64px', borderRadius: '18px', background: 'hsl(42,18%,94%)', border: '1.5px dashed hsl(38,14%,85%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>🔔</div>
-            <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'hsl(24,10%,44%)' }}>All caught up</p>
-          </div>
-        ) : groups.map(group => (
-          <div key={group.label}>
-            <p style={{ fontSize: '0.72rem', fontWeight: 700, color: 'hsl(24,10%,44%)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '8px', paddingLeft: '2px' }}>
-              {group.label}
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {group.items.map(n => {
-                const cfg = TYPE_CFG[n.type]
-                return (
-                  <div key={n.id} className="notif-item"
-                    style={{
-                      display: 'flex', gap: '12px', padding: '13px 14px', borderRadius: '14px',
-                      background: n.read ? 'hsl(42,25%,99%)' : 'hsl(42,30%,97%)',
-                      border: n.read ? '1px solid hsl(38,14%,90%)' : `1.5px solid ${cfg.color}30`,
-                      transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                    }}
-                    onMouseEnter={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = 'translateY(-1px)'; el.style.boxShadow = '0 4px 14px rgba(15,26,20,0.07)' }}
-                    onMouseLeave={e => { const el = e.currentTarget as HTMLDivElement; el.style.transform = ''; el.style.boxShadow = '' }}
-                  >
-                    <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: cfg.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>
-                      {cfg.icon}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '3px' }}>
-                        <p
-                          onClick={() => { if (n.content_id) router.push(`/brief/${n.content_id}`) }}
-                          style={{ fontSize: '0.85rem', fontWeight: n.read ? 600 : 700, color: 'hsl(24,20%,11%)', lineHeight: 1.3, cursor: n.content_id ? 'pointer' : 'default' }}
-                        >{n.title}</p>
-                        {!n.read && (
+          <Card className="border border-dashed border-border bg-card shadow-none">
+            <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+              <div className="flex size-16 items-center justify-center rounded-lg border border-dashed border-border bg-secondary text-2xl">
+                🔔
+              </div>
+              <p className="text-sm font-semibold text-muted-foreground">All caught up</p>
+            </CardContent>
+          </Card>
+        ) : (
+          groups.map(group => (
+            <section key={group.label} className="flex flex-col gap-2">
+              <p className="pl-0.5 text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground">
+                {group.label}
+              </p>
+              <div className="flex flex-col gap-2">
+                {group.items.map(n => {
+                  const cfg = TYPE_CFG[n.type]
+                  const clickable = Boolean(n.content_id)
+
+                  return (
+                    <Card
+                      key={n.id}
+                      data-animate="notif-item"
+                      className={cn(
+                        'group shadow-none transition-all hover:-translate-y-px hover:shadow-sm',
+                        n.read ? 'bg-card' : 'bg-background',
+                        n.read ? cfg.readBorderClass : cfg.unreadBorderClass
+                      )}
+                    >
+                      <CardContent className="flex items-start gap-3 py-4">
+                        <div className={cn('flex size-9 shrink-0 items-center justify-center rounded-[10px] text-base', cfg.iconClass)}>
+                          {cfg.icon}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 flex items-start justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (n.content_id) router.push(`/brief/${n.content_id}`)
+                              }}
+                              className={cn(
+                                'min-w-0 text-left text-sm leading-[1.3] text-foreground',
+                                n.read ? 'font-semibold' : 'font-bold',
+                                clickable && 'cursor-pointer hover:text-primary'
+                              )}
+                            >
+                              {n.title}
+                            </button>
+                            {!n.read && (
+                              <Button
+                                variant="outline"
+                                size="icon-xs"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  markRead(n.id)
+                                }}
+                                title="Mark as read"
+                                className={cn('rounded-full bg-transparent', cfg.accentClass)}
+                              >
+                                ✓
+                              </Button>
+                            )}
+                          </div>
+
                           <button
-                            onClick={e => { e.stopPropagation(); markRead(n.id) }}
-                            title="Mark as read"
-                            style={{
-                              width: '22px', height: '22px', borderRadius: '50%', border: `1.5px solid ${cfg.color}`,
-                              background: 'transparent', cursor: 'pointer', flexShrink: 0,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              color: cfg.color, fontSize: '11px', fontWeight: 800, lineHeight: 1,
+                            type="button"
+                            onClick={() => {
+                              if (n.content_id) router.push(`/brief/${n.content_id}`)
                             }}
-                          >✓</button>
-                        )}
-                      </div>
-                      <p
-                        onClick={() => { if (n.content_id) router.push(`/brief/${n.content_id}`) }}
-                        style={{ fontSize: '0.75rem', color: 'hsl(24,10%,54%)', lineHeight: 1.4, marginBottom: '6px', cursor: n.content_id ? 'pointer' : 'default' }}
-                      >{n.body}</p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ padding: '2px 7px', borderRadius: '9999px', background: cfg.bg, color: cfg.color, fontSize: '0.62rem', fontWeight: 700 }}>{cfg.label}</span>
-                        <span style={{ fontSize: '0.656rem', color: 'hsl(24,8%,64%)' }}>{timeAgo(n.created_at)}</span>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        ))}
+                            className={cn(
+                              'mb-1.5 block text-left text-xs leading-5 text-muted-foreground',
+                              clickable && 'cursor-pointer hover:text-foreground'
+                            )}
+                          >
+                            {n.body}
+                          </button>
+
+                          <div className="flex items-center gap-2">
+                            <Badge className={cn('border-0 text-[0.62rem] font-bold', cfg.badgeClass)}>
+                              {cfg.label}
+                            </Badge>
+                            <span className="text-2xs text-ghost">{timeAgo(n.created_at)}</span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            </section>
+          ))
+        )}
       </div>
     </main>
   )

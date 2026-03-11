@@ -43,7 +43,46 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     setLoading(false)
   }
 
-  useEffect(() => { fetchOrg() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadOrg() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        if (!cancelled) setLoading(false)
+        return
+      }
+
+      const { data: profile } = await supabase
+        .from('users')
+        .select('org_id')
+        .eq('id', user.id)
+        .single()
+
+      if (!profile?.org_id) {
+        if (!cancelled) setLoading(false)
+        return
+      }
+
+      const { data } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('id', profile.org_id)
+        .single()
+
+      if (cancelled) return
+
+      if (data) setOrg(data as Organization)
+      setLoading(false)
+    }
+
+    void loadOrg()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <OrgContext.Provider value={{ org, loading, refreshOrg: fetchOrg }}>

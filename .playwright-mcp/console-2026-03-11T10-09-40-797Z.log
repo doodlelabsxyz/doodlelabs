@@ -1,0 +1,5 @@
+[     556ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[     717ms] [ERROR] Manifest: Line: 1, column: 1, Syntax error. @ http://localhost:3000/manifest.json:0
+[    1041ms] [WARNING] GSAP target .notif-item not found. https://gsap.com @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[    1042ms] [WARNING] GSAP target  not found. https://gsap.com @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[    1042ms] [WARNING] GSAP target  not found. https://gsap.com @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297

@@ -2,9 +2,13 @@
 
 import { useState } from 'react'
 import type { Role } from '@/lib/types'
+import {
+  Dialog,
+  DialogContent,
+  DialogClose,
+} from '@/components/ui/dialog'
 
 const TEAM_ROLES: Role[] = ['admin', 'writer', 'designer', 'videographer', 'editor', 'poster']
-
 
 type Props =
   | { mode: 'client'; clientId: string; clientName: string; defaultEmail?: string; onClose: () => void; onSuccess: () => void }
@@ -57,18 +61,23 @@ export default function CreateUserModal(props: Props) {
     onClose()
   }
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center md:items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+  const accentColor = mode === 'client' ? 'hsl(25,82%,60%)' : 'hsl(200,88%,55%)'
+  const accentBg    = mode === 'client' ? 'hsl(25,82%,93%)'  : 'hsl(200,88%,93%)'
 
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-md p-0 gap-0 overflow-hidden rounded-2xl ring-0 bg-white"
+      >
         {/* Top bar */}
-        <div className="h-1.5" style={{ background: mode === 'client' ? 'hsl(25,82%,60%)' : 'hsl(200,88%,55%)' }} />
+        <div className="h-1.5" style={{ background: accentColor }} />
 
         {done ? (
           /* ── Success state ── */
           <div className="p-6 flex flex-col items-center gap-4 text-center">
             <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl"
-              style={{ background: mode === 'client' ? 'hsl(25,82%,93%)' : 'hsl(200,88%,93%)' }}>
+              style={{ background: accentBg }}>
               ✓
             </div>
             <div>
@@ -88,7 +97,7 @@ export default function CreateUserModal(props: Props) {
             <button
               onClick={handleDone}
               className="w-full py-3 rounded-xl font-bold text-white text-sm transition-opacity hover:opacity-90"
-              style={{ background: mode === 'client' ? 'hsl(25,82%,60%)' : 'hsl(200,88%,55%)' }}
+              style={{ background: accentColor }}
             >
               Done
             </button>
@@ -103,10 +112,9 @@ export default function CreateUserModal(props: Props) {
                 </p>
                 <h2 className="text-lg font-extrabold text-stone-800">Create Login Access</h2>
               </div>
-              <button type="button" onClick={onClose}
-                className="w-8 h-8 rounded-lg bg-stone-100 text-stone-500 hover:bg-stone-200 transition-colors flex items-center justify-center text-lg font-light">
+              <DialogClose className="w-8 h-8 rounded-lg bg-stone-100 text-stone-500 hover:bg-stone-200 transition-colors flex items-center justify-center text-lg font-light">
                 ×
-              </button>
+              </DialogClose>
             </div>
 
             {/* Name — editable for team, locked for client */}
@@ -195,23 +203,25 @@ export default function CreateUserModal(props: Props) {
             )}
 
             <div className="flex gap-3 mt-1">
-              <button type="button" onClick={onClose}
-                className="flex-1 py-2.5 rounded-xl border border-stone-200 text-sm font-semibold text-stone-500 hover:bg-stone-50 transition-colors">
+              <DialogClose
+                type="button"
+                className="flex-1 py-2.5 rounded-xl border border-stone-200 text-sm font-semibold text-stone-500 hover:bg-stone-50 transition-colors"
+              >
                 Cancel
-              </button>
+              </DialogClose>
               <button
                 type="submit"
                 disabled={loading}
                 className="flex-2 flex-grow-[2] py-2.5 rounded-xl text-sm font-bold text-white transition-opacity disabled:opacity-50"
-                style={{ background: mode === 'client' ? 'hsl(25,82%,60%)' : 'hsl(200,88%,55%)' }}
+                style={{ background: accentColor }}
               >
                 {loading ? 'Creating…' : 'Create Account'}
               </button>
             </div>
           </form>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

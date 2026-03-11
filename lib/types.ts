@@ -331,7 +331,7 @@ export interface NavItem {
   icon:
     | 'home' | 'calendar' | 'planning' | 'pipeline' | 'team' | 'tasks'
     | 'upcoming' | 'done' | 'week' | 'notes' | 'notifications'
-    | 'ideas' | 'finance' | 'clients' | 'audit'
+    | 'ideas' | 'finance' | 'clients' | 'audit' | 'analytics'
   dividerBefore?: boolean
 }
 
@@ -344,9 +344,10 @@ export const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { label: 'Ideas',     href: '/ideas',         icon: 'ideas' },
     { label: 'Team',      href: '/team',          icon: 'team',    dividerBefore: true },
     { label: 'Clients',   href: '/clients',       icon: 'clients' },
-    { label: 'Finance',   href: '/finance',       icon: 'finance', dividerBefore: true },
+    { label: 'Finance',    href: '/finance',       icon: 'finance',       dividerBefore: true },
+    { label: 'Analytics', href: '/analytics',     icon: 'analytics' },
     { label: 'Alerts',    href: '/notifications', icon: 'notifications' },
-    { label: 'Audit',     href: '/audit',         icon: 'audit', dividerBefore: true },
+    { label: 'Audit',     href: '/audit',         icon: 'audit',         dividerBefore: true },
   ],
   writer: [
     { label: 'Today',     href: '/tasks',          icon: 'tasks' },

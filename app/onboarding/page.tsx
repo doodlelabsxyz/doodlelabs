@@ -123,7 +123,7 @@ export default function OnboardingPage() {
                 Your workspace is ready!
               </h2>
               <p style={{ fontSize:'0.82rem', color:'hsl(24,8%,52%)', marginTop:'8px', lineHeight:1.6 }}>
-                Let's set things up in 2 quick steps so your team can hit the ground running.
+                Let&apos;s set things up in 2 quick steps so your team can hit the ground running.
               </p>
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
@@ -144,7 +144,7 @@ export default function OnboardingPage() {
               onClick={() => setStep(2)}
               style={{ padding:'14px', borderRadius:'9999px', background:brand, color:'white', fontWeight:700, fontSize:'0.875rem', border:'none', cursor:'pointer', boxShadow:`0 6px 20px ${brand}40` }}
             >
-              Let's go
+              Let&apos;s go
             </button>
           </div>
         )}
@@ -199,7 +199,7 @@ export default function OnboardingPage() {
           <div style={{ display:'flex', flexDirection:'column', gap:'18px' }}>
             <div>
               <h2 style={{ fontSize:'1.15rem', fontWeight:800, color:'hsl(24,20%,11%)', letterSpacing:'-0.02em' }}>Invite your team</h2>
-              <p style={{ fontSize:'0.78rem', color:'hsl(24,8%,52%)', marginTop:'4px' }}>They'll get an email to join your workspace.</p>
+              <p style={{ fontSize:'0.78rem', color:'hsl(24,8%,52%)', marginTop:'4px' }}>They&apos;ll get an email to join your workspace.</p>
             </div>
 
             {!inviteSent ? (
@@ -254,7 +254,7 @@ export default function OnboardingPage() {
               <div style={{ textAlign:'center', padding:'20px 0' }}>
                 <div style={{ fontSize:'2.5rem', marginBottom:'12px' }}>✅</div>
                 <p style={{ fontSize:'0.9rem', fontWeight:700, color:'hsl(24,20%,11%)' }}>Invite sent to {inviteEmail}</p>
-                <p style={{ fontSize:'0.75rem', color:'hsl(24,8%,52%)', marginTop:'6px' }}>They'll get an email to join your workspace.</p>
+                <p style={{ fontSize:'0.75rem', color:'hsl(24,8%,52%)', marginTop:'6px' }}>They&apos;ll get an email to join your workspace.</p>
                 <button
                   onClick={() => router.push('/dashboard')}
                   style={{ marginTop:'20px', padding:'13px 32px', borderRadius:'9999px', background:brand, color:'white', fontWeight:700, fontSize:'0.875rem', border:'none', cursor:'pointer', boxShadow:`0 6px 20px ${brand}40` }}

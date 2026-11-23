@@ -1,9 +1,21 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -49,19 +61,21 @@ import { Textarea } from '@/components/ui/textarea'
 import { UserAvatar } from '@/components/ui/user-avatar'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/supabase/useUser'
+import { effectiveInvoiceStatus, fmtMoney, recentMonths } from '@/lib/finance'
 import type { ExpenseCategory, InvoiceStatus } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 gsap.registerPlugin(useGSAP)
 
 type Tab = 'overview' | 'invoices' | 'payroll' | 'expenses'
-type DrawerType = 'invoice' | 'expense' | 'payroll' | null
+type DrawerType = 'expense' | 'payroll' | null
 
 type ClientRow = { id: string; name: string; brand_color: string; initials: string }
 type UserRow = { id: string; name: string; role: string }
 
 type InvoiceRow = {
   id: string
+  invoice_number: string | null
   client_id: string
   month: string
   amount: number
@@ -90,60 +104,42 @@ type ExpenseRow = {
   amount: number
   date: string
   paid_by: string
+  receipt_path: string | null
   paid_by_user: { id: string; name: string } | { id: string; name: string }[] | null
 }
 
 const EXPENSE_CAT_CFG: Record<ExpenseCategory, { label: string; icon: string; tone: string; softTone: string }> = {
-  software: { label: 'Software', icon: '💻', tone: 'text-sky', softTone: 'bg-sky-tint text-sky border-sky/20' },
-  equipment: { label: 'Equipment', icon: '🎬', tone: 'text-lavender', softTone: 'bg-lavender-tint text-lavender border-lavender/20' },
-  freelance: { label: 'Freelance', icon: '🤝', tone: 'text-coral', softTone: 'bg-coral/12 text-coral border-coral/20' },
-  marketing: { label: 'Marketing', icon: '📢', tone: 'text-lemon', softTone: 'bg-lemon-tint text-lemon border-lemon/20' },
-  office: { label: 'Office', icon: '🏢', tone: 'text-mint', softTone: 'bg-mint-tint text-mint border-mint/20' },
+  software: { label: 'Software', icon: '💻', tone: 'text-primary', softTone: 'bg-wash text-primary border-primary/30' },
+  equipment: { label: 'Equipment', icon: '🎬', tone: 'text-primary', softTone: 'bg-wash text-primary border-primary/30' },
+  freelance: { label: 'Freelance', icon: '🤝', tone: 'text-primary', softTone: 'bg-wash text-primary border-primary/30' },
+  marketing: { label: 'Marketing', icon: '📢', tone: 'text-primary', softTone: 'bg-wash text-primary border-primary/30' },
+  office: { label: 'Office', icon: '🏢', tone: 'text-primary', softTone: 'bg-wash text-primary border-primary/30' },
   other: { label: 'Other', icon: '📦', tone: 'text-muted-foreground', softTone: 'bg-muted text-muted-foreground border-border' },
 }
 
-const MONTHS = ['March 2026', 'February 2026', 'January 2026', 'December 2025']
+const MONTHS = recentMonths(12)
+const RECEIPT_MAX_BYTES = 8 * 1024 * 1024
+const RECEIPT_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf']
 
-const INVOICE_STATUS_BADGE: Record<InvoiceStatus, { status: 'approved' | 'planned' | 'overdue'; label: string }> = {
+const INVOICE_STATUS_BADGE: Record<InvoiceStatus, { status: 'approved' | 'planned' | 'overdue'; label: string; dueSoon?: boolean }> = {
   paid: { status: 'approved', label: 'Paid' },
-  pending: { status: 'planned', label: 'Pending' },
+  pending: { status: 'planned', label: 'Pending', dueSoon: true },
   overdue: { status: 'overdue', label: 'Overdue' },
 }
 
-const ADD_BUTTON_LABEL: Record<Tab, string> = {
-  overview: '',
-  invoices: 'New Invoice',
-  payroll: 'Add Payroll',
-  expenses: 'Log Expense',
-}
-
-const ADD_DRAWER_TYPE: Record<Tab, DrawerType> = {
-  overview: null,
-  invoices: 'invoice',
-  payroll: 'payroll',
-  expenses: 'expense',
-}
-
-const DIALOG_META: Record<Exclude<DrawerType, null>, { title: string; description: string; submitLabel: string }> = {
-  invoice: {
-    title: 'New invoice',
-    description: 'Create a client invoice for the selected billing month.',
-    submitLabel: 'Create invoice',
-  },
+const DIALOG_META: Record<Exclude<DrawerType, null>, { title: string; editTitle: string; description: string; submitLabel: string }> = {
   expense: {
     title: 'Log expense',
+    editTitle: 'Edit expense',
     description: 'Capture an operational expense and assign who paid it.',
     submitLabel: 'Log expense',
   },
   payroll: {
     title: 'Add payroll entry',
+    editTitle: 'Edit payroll entry',
     description: 'Record a salary payout for a team member.',
     submitLabel: 'Add entry',
   },
-}
-
-function fmt(n: number) {
-  return `$${n.toLocaleString()}`
 }
 
 function normalizeOne<T>(x: T | T[] | null): T | null {
@@ -162,6 +158,20 @@ function expenseToMonth(dateStr: string) {
 function paidAtLabel(paidAt: string | null) {
   if (!paidAt) return 'Paid'
   return new Date(paidAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+/** Token-based readable foreground for a client's own brand color (hex or hsl). */
+function brandForeground(color: string): string {
+  let lightness = 0.4
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim())
+  const hsl = /^hsl\(\s*[\d.]+\s*,\s*[\d.]+%\s*,\s*([\d.]+)%/i.exec(color.trim())
+  if (hsl) lightness = Number(hsl[1]) / 100
+  else if (hex) {
+    const h = hex[1].length === 3 ? hex[1].replace(/./g, c => c + c) : hex[1]
+    const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255)
+    lightness = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+  return lightness > 0.55 ? 'text-dark' : 'text-dark-text'
 }
 
 function clientStyle(color: string): CSSProperties {
@@ -211,13 +221,15 @@ function FinanceEmpty({
   )
 }
 
+type DeleteTarget = { type: 'expense' | 'payroll'; id: string; label: string } | null
+
 export default function FinancePage() {
   const { user } = useUser()
   const heroRef = useRef<HTMLDivElement>(null)
 
   const [mounted, setMounted] = useState(false)
   const [tab, setTab] = useState<Tab>('overview')
-  const [selectedMonth, setSelectedMonth] = useState('March 2026')
+  const [selectedMonth, setSelectedMonth] = useState(MONTHS[0])
   const [invoices, setInvoices] = useState<InvoiceRow[]>([])
   const [salaries, setSalaries] = useState<SalaryRow[]>([])
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
@@ -226,25 +238,28 @@ export default function FinancePage() {
   const [invFilter, setInvFilter] = useState<InvoiceStatus | 'all'>('all')
   const [expFilter, setExpFilter] = useState<ExpenseCategory | 'all'>('all')
   const [drawer, setDrawer] = useState<DrawerType>(null)
+  const [saving, setSaving] = useState(false)
+  const [dialogError, setDialogError] = useState('')
+  const [actionError, setActionError] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null)
+  const [deleting, setDeleting] = useState(false)
 
-  const [newInv, setNewInv] = useState({
-    client_id: '',
-    description: '',
-    amount: '',
-    month: 'March 2026',
-    due_date: '',
-    status: 'pending' as InvoiceStatus,
-  })
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
+  const [originalReceiptPath, setOriginalReceiptPath] = useState<string | null>(null)
+  const [receiptFile, setReceiptFile] = useState<File | null>(null)
+  const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null)
+
   const [newExp, setNewExp] = useState({
     category: 'software' as ExpenseCategory,
     description: '',
     amount: '',
     date: new Date().toISOString().split('T')[0],
     paid_by: '',
+    receipt_path: null as string | null,
   })
   const [newSal, setNewSal] = useState({
     user_id: '',
-    month: 'March 2026',
+    month: MONTHS[0],
     amount: '',
     notes: '',
   })
@@ -268,7 +283,6 @@ export default function FinancePage() {
       setExpenses((expRes.data || []) as ExpenseRow[])
       setClients(nextClients)
       setUsers(nextUsers)
-      setNewInv(prev => (prev.client_id || nextClients.length === 0 ? prev : { ...prev, client_id: nextClients[0].id }))
       setNewExp(prev => (prev.paid_by || nextUsers.length === 0 ? prev : { ...prev, paid_by: nextUsers[0].id }))
       setNewSal(prev => {
         if (prev.user_id || nextUsers.length === 0) return prev
@@ -306,11 +320,20 @@ export default function FinancePage() {
     { dependencies: [mounted] }
   )
 
-  if (!mounted) return null
+  if (!mounted) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-col gap-3.5 px-4 py-5" aria-busy="true" aria-label="Loading finance">
+        <Skeleton className="h-14 w-full rounded-2xl" />
+        <Skeleton className="h-28 w-full rounded-2xl" />
+        <Skeleton className="h-10 w-2/3 rounded-full" />
+        <Skeleton className="h-40 w-full rounded-2xl" />
+      </div>
+    )
+  }
 
   const totalIncome = invoices.filter(invoice => invoice.status === 'paid').reduce((sum, invoice) => sum + Number(invoice.amount), 0)
-  const totalPending = invoices.filter(invoice => invoice.status === 'pending').reduce((sum, invoice) => sum + Number(invoice.amount), 0)
-  const totalOverdue = invoices.filter(invoice => invoice.status === 'overdue').reduce((sum, invoice) => sum + Number(invoice.amount), 0)
+  const totalPending = invoices.filter(invoice => effectiveInvoiceStatus(invoice) === 'pending').reduce((sum, invoice) => sum + Number(invoice.amount), 0)
+  const totalOverdue = invoices.filter(invoice => effectiveInvoiceStatus(invoice) === 'overdue').reduce((sum, invoice) => sum + Number(invoice.amount), 0)
   const totalPayroll = salaries.filter(salary => salary.paid).reduce((sum, salary) => sum + Number(salary.amount), 0)
   const totalExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount), 0)
   const totalProfit = totalIncome - totalPayroll - totalExpenses
@@ -322,111 +345,263 @@ export default function FinancePage() {
   const monthExpenses = expenses.filter(expense => expenseToMonth(expense.date) === selectedMonth).reduce((sum, expense) => sum + Number(expense.amount), 0)
   const monthProfit = monthIncome - monthPayroll - monthExpenses
 
-  async function markInvoicePaid(id: string) {
-    const now = new Date().toISOString()
-    setInvoices(prev => prev.map(invoice => (invoice.id === id ? { ...invoice, status: 'paid' as InvoiceStatus, paid_at: now } : invoice)))
-    const supabase = createClient()
-    await supabase.from('invoices').update({ status: 'paid', paid_at: now }).eq('id', id)
-  }
-
-  async function markSalaryPaid(id: string) {
-    const now = new Date().toISOString()
-    setSalaries(prev => prev.map(salary => (salary.id === id ? { ...salary, paid: true, paid_at: now } : salary)))
-    const supabase = createClient()
-    await supabase.from('salary_records').update({ paid: true, paid_at: now }).eq('id', id)
-  }
-
-  async function submitInvoice() {
-    if (!newInv.description || !newInv.amount || !newInv.due_date || !newInv.client_id) return
-
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('invoices')
-      .insert({
-        client_id: newInv.client_id,
-        description: newInv.description,
-        amount: parseInt(newInv.amount),
-        status: newInv.status,
-        month: newInv.month,
-        due_date: newInv.due_date,
-        org_id: user?.org_id,
-      })
-      .select('*, clients:client_id(id, name, brand_color, initials)')
-      .single()
-
-    if (data) setInvoices(prev => [data as InvoiceRow, ...prev])
-    setNewInv({
-      client_id: clients[0]?.id || '',
-      description: '',
-      amount: '',
-      month: 'March 2026',
-      due_date: '',
-      status: 'pending',
-    })
-    setDrawer(null)
-  }
-
-  async function submitExpense() {
-    if (!newExp.description || !newExp.amount) return
-
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('expenses')
-      .insert({
-        category: newExp.category,
-        description: newExp.description,
-        amount: parseInt(newExp.amount),
-        date: newExp.date,
-        paid_by: newExp.paid_by,
-        org_id: user?.org_id,
-      })
-      .select('*, paid_by_user:paid_by(id, name)')
-      .single()
-
-    if (data) setExpenses(prev => [data as ExpenseRow, ...prev])
+  function resetExpenseForm() {
+    setEditingExpenseId(null)
+    setOriginalReceiptPath(null)
+    setReceiptFile(null)
     setNewExp({
       category: 'software',
       description: '',
       amount: '',
       date: new Date().toISOString().split('T')[0],
       paid_by: users[0]?.id || '',
+      receipt_path: null,
     })
-    setDrawer(null)
   }
 
-  async function submitPayroll() {
-    if (!newSal.amount) return
-
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('salary_records')
-      .insert({
-        user_id: newSal.user_id,
-        month: newSal.month,
-        amount: parseInt(newSal.amount),
-        paid: false,
-        notes: newSal.notes || null,
-        org_id: user?.org_id,
-      })
-      .select('*, users:user_id(id, name, role)')
-      .single()
-
-    if (data) setSalaries(prev => [data as SalaryRow, ...prev])
+  function resetSalaryForm() {
+    setEditingSalaryId(null)
     setNewSal({
       user_id: users.find(candidate => candidate.role !== 'admin')?.id || users[0]?.id || '',
-      month: 'March 2026',
+      month: MONTHS[0],
       amount: '',
       notes: '',
     })
-    setDrawer(null)
   }
 
-  const filteredInvoices = invoices.filter(invoice => invFilter === 'all' || invoice.status === invFilter)
+  function openNewExpense() {
+    resetExpenseForm()
+    setDialogError('')
+    setDrawer('expense')
+  }
+
+  function openEditExpense(expense: ExpenseRow) {
+    setEditingExpenseId(expense.id)
+    setOriginalReceiptPath(expense.receipt_path)
+    setReceiptFile(null)
+    setNewExp({
+      category: expense.category,
+      description: expense.description,
+      amount: String(expense.amount),
+      date: expense.date,
+      paid_by: expense.paid_by,
+      receipt_path: expense.receipt_path,
+    })
+    setDialogError('')
+    setDrawer('expense')
+  }
+
+  function openNewPayroll() {
+    resetSalaryForm()
+    setDialogError('')
+    setDrawer('payroll')
+  }
+
+  function openEditPayroll(salary: SalaryRow) {
+    setEditingSalaryId(salary.id)
+    setNewSal({
+      user_id: salary.user_id,
+      month: salary.month,
+      amount: String(salary.amount),
+      notes: salary.notes || '',
+    })
+    setDialogError('')
+    setDrawer('payroll')
+  }
+
+  function closeDrawer() {
+    setDrawer(null)
+    resetExpenseForm()
+    resetSalaryForm()
+    setDialogError('')
+  }
+
+  async function markInvoicePaid(id: string) {
+    setActionError('')
+    const now = new Date().toISOString()
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('invoices')
+      .update({ status: 'paid', paid_at: now })
+      .eq('id', id)
+      .select('status, paid_at')
+      .single()
+
+    if (error || !data) {
+      setActionError('Could not mark that invoice paid. Please try again.')
+      return
+    }
+    setInvoices(prev => prev.map(invoice => (invoice.id === id ? { ...invoice, status: 'paid' as InvoiceStatus, paid_at: data.paid_at } : invoice)))
+  }
+
+  async function markSalaryPaid(id: string) {
+    setActionError('')
+    const now = new Date().toISOString()
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('salary_records')
+      .update({ paid: true, paid_at: now })
+      .eq('id', id)
+      .select('paid, paid_at')
+      .single()
+
+    if (error || !data) {
+      setActionError('Could not mark that payroll entry paid. Please try again.')
+      return
+    }
+    setSalaries(prev => prev.map(salary => (salary.id === id ? { ...salary, paid: true, paid_at: data.paid_at } : salary)))
+  }
+
+  async function uploadReceipt(file: File, orgId: string): Promise<string | null> {
+    const supabase = createClient()
+    const ext = file.name.split('.').pop() || 'bin'
+    const path = `${orgId}/${crypto.randomUUID()}.${ext}`
+    const { error } = await supabase.storage.from('receipts').upload(path, file, { upsert: false })
+    return error ? null : path
+  }
+
+  function handleReceiptSelect(file: File | null) {
+    setDialogError('')
+    if (!file) { setReceiptFile(null); return }
+    if (!RECEIPT_TYPES.includes(file.type)) {
+      setDialogError('Receipts must be an image (PNG/JPEG/WebP) or a PDF.')
+      return
+    }
+    if (file.size > RECEIPT_MAX_BYTES) {
+      setDialogError('Receipt must be under 8MB.')
+      return
+    }
+    setReceiptFile(file)
+  }
+
+  async function viewReceipt(path: string) {
+    const supabase = createClient()
+    const { data, error } = await supabase.storage.from('receipts').createSignedUrl(path, 60)
+    if (error || !data) {
+      setActionError('Could not open that receipt.')
+      return
+    }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  async function submitExpense() {
+    const amount = parseFloat(newExp.amount)
+    if (!newExp.description.trim() || !Number.isFinite(amount) || amount <= 0 || !newExp.paid_by) return
+
+    setSaving(true)
+    setDialogError('')
+
+    let receiptPath = newExp.receipt_path
+    if (receiptFile) {
+      const uploaded = await uploadReceipt(receiptFile, user!.org_id!)
+      if (!uploaded) {
+        setSaving(false)
+        setDialogError('Could not upload the receipt. Please try again.')
+        return
+      }
+      receiptPath = uploaded
+    }
+
+    const supabase = createClient()
+    const payload = {
+      category: newExp.category,
+      description: newExp.description.trim(),
+      amount,
+      date: newExp.date,
+      paid_by: newExp.paid_by,
+      receipt_path: receiptPath,
+      org_id: user?.org_id,
+    }
+
+    const { data, error } = editingExpenseId
+      ? await supabase.from('expenses').update(payload).eq('id', editingExpenseId).select('*, paid_by_user:paid_by(id, name)').single()
+      : await supabase.from('expenses').insert(payload).select('*, paid_by_user:paid_by(id, name)').single()
+
+    setSaving(false)
+
+    if (error || !data) {
+      setDialogError(`Could not save this expense. ${error?.message || 'Please try again.'}`)
+      return
+    }
+
+    if (originalReceiptPath && originalReceiptPath !== receiptPath) {
+      await supabase.storage.from('receipts').remove([originalReceiptPath])
+    }
+
+    setExpenses(prev =>
+      editingExpenseId ? prev.map(expense => (expense.id === data.id ? (data as ExpenseRow) : expense)) : [data as ExpenseRow, ...prev]
+    )
+    closeDrawer()
+  }
+
+  async function submitPayroll() {
+    const amount = parseFloat(newSal.amount)
+    if (!Number.isFinite(amount) || amount <= 0 || !newSal.user_id) return
+
+    setSaving(true)
+    setDialogError('')
+
+    const supabase = createClient()
+    const payload = {
+      user_id: newSal.user_id,
+      month: newSal.month,
+      amount,
+      notes: newSal.notes || null,
+      org_id: user?.org_id,
+    }
+
+    const { data, error } = editingSalaryId
+      ? await supabase.from('salary_records').update(payload).eq('id', editingSalaryId).select('*, users:user_id(id, name, role)').single()
+      : await supabase.from('salary_records').insert({ ...payload, paid: false }).select('*, users:user_id(id, name, role)').single()
+
+    setSaving(false)
+
+    if (error || !data) {
+      setDialogError(`Could not save this payroll entry. ${error?.message || 'Please try again.'}`)
+      return
+    }
+
+    setSalaries(prev =>
+      editingSalaryId ? prev.map(salary => (salary.id === data.id ? (data as SalaryRow) : salary)) : [data as SalaryRow, ...prev]
+    )
+    closeDrawer()
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setActionError('')
+    const supabase = createClient()
+
+    if (deleteTarget.type === 'expense') {
+      const expense = expenses.find(e => e.id === deleteTarget.id)
+      const { data, error } = await supabase.from('expenses').delete().eq('id', deleteTarget.id).select('id').single()
+      if (error || !data) {
+        setActionError('Could not delete this expense. Please try again.')
+      } else {
+        if (expense?.receipt_path) await supabase.storage.from('receipts').remove([expense.receipt_path])
+        setExpenses(prev => prev.filter(e => e.id !== deleteTarget.id))
+      }
+    } else {
+      const { data, error } = await supabase.from('salary_records').delete().eq('id', deleteTarget.id).select('id').single()
+      if (error || !data) {
+        setActionError('Could not delete this payroll entry. Please try again.')
+      } else {
+        setSalaries(prev => prev.filter(s => s.id !== deleteTarget.id))
+      }
+    }
+
+    setDeleting(false)
+    setDeleteTarget(null)
+  }
+
+  const filteredInvoices = invoices.filter(invoice => invFilter === 'all' || effectiveInvoiceStatus(invoice) === invFilter)
   const filteredExpenses = expenses.filter(expense => expFilter === 'all' || expense.category === expFilter)
   const monthPayrollTotal = monthSalaries.reduce((sum, salary) => sum + Number(salary.amount), 0)
   const payrollPaidCount = monthSalaries.filter(salary => salary.paid).length
   const shownExpensesTotal = filteredExpenses.reduce((sum, expense) => sum + Number(expense.amount), 0)
   const dialogConfig = drawer ? DIALOG_META[drawer] : null
+  const isEditing = drawer === 'expense' ? !!editingExpenseId : drawer === 'payroll' ? !!editingSalaryId : false
 
   const heroMetrics = [
     {
@@ -439,16 +614,16 @@ export default function FinancePage() {
     {
       label: 'Payroll Paid',
       value: totalPayroll,
-      cardClass: 'bg-danger/10',
-      labelClass: 'text-danger/80',
-      valueClass: 'text-danger',
+      cardClass: 'bg-secondary',
+      labelClass: 'text-muted-foreground',
+      valueClass: 'text-foreground',
     },
     {
       label: 'Expenses',
       value: totalExpenses,
-      cardClass: 'bg-lemon-tint',
-      labelClass: 'text-lemon',
-      valueClass: 'text-lemon',
+      cardClass: 'bg-wash',
+      labelClass: 'text-primary',
+      valueClass: 'text-primary',
     },
     {
       label: 'Net Profit',
@@ -461,8 +636,8 @@ export default function FinancePage() {
 
   const monthMetrics = [
     { label: 'Income Collected', value: monthIncome, shellClass: 'border-success/20 bg-success/5', textClass: 'text-success' },
-    { label: 'Payroll', value: monthPayroll, shellClass: 'border-danger/20 bg-danger/5', textClass: 'text-danger' },
-    { label: 'Expenses', value: monthExpenses, shellClass: 'border-lemon/20 bg-lemon/8', textClass: 'text-lemon' },
+    { label: 'Payroll', value: monthPayroll, shellClass: 'border-border bg-secondary', textClass: 'text-foreground' },
+    { label: 'Expenses', value: monthExpenses, shellClass: 'border-primary/20 bg-wash', textClass: 'text-primary' },
     {
       label: 'Net Profit',
       value: monthProfit,
@@ -474,20 +649,27 @@ export default function FinancePage() {
   return (
     <main className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">
       <Tabs value={tab} onValueChange={value => setTab(value as Tab)} className="gap-0">
-        <section ref={heroRef} className="flex flex-col gap-5 border-b border-border bg-foreground px-5 py-5 text-background">
+        <section ref={heroRef} className="flex flex-col gap-5 border-b border-border bg-card px-5 py-5 text-foreground">
           <div className="flex items-start justify-between gap-4">
             <div className="flex flex-col gap-1">
-              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-background/55">Admin</p>
+              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Admin</p>
               <h1 className="text-2xl font-extrabold tracking-tight">Finance</h1>
-              <p className="text-sm text-background/70">Track collections, payroll, and spend across the studio.</p>
+              <p className="text-sm text-muted-foreground">Track collections, payroll, and spend across the studio.</p>
             </div>
 
-            {tab !== 'overview' && (
-              <Button
-                onClick={() => setDrawer(ADD_DRAWER_TYPE[tab])}
-                className="bg-coral text-white hover:bg-coral/85"
-              >
-                {ADD_BUTTON_LABEL[tab]}
+            {tab === 'invoices' && (
+              <Link href="/finance/invoices/new">
+                <Button className="bg-primary text-primary-foreground hover:bg-primary/85">New Invoice</Button>
+              </Link>
+            )}
+            {tab === 'payroll' && (
+              <Button onClick={openNewPayroll} className="bg-primary text-primary-foreground hover:bg-primary/85">
+                Add Payroll
+              </Button>
+            )}
+            {tab === 'expenses' && (
+              <Button onClick={openNewExpense} className="bg-primary text-primary-foreground hover:bg-primary/85">
+                Log Expense
               </Button>
             )}
           </div>
@@ -500,7 +682,7 @@ export default function FinancePage() {
                     {metric.label}
                   </p>
                   <p className={cn('fin-counter text-2xl font-extrabold tracking-tight', metric.valueClass)} data-target={metric.value}>
-                    {fmt(metric.value)}
+                    {fmtMoney(metric.value)}
                   </p>
                 </CardContent>
               </Card>
@@ -511,12 +693,12 @@ export default function FinancePage() {
             <div className="flex flex-wrap items-center gap-2">
               {totalOverdue > 0 && (
                 <Badge variant="outline" className="border-danger/30 bg-danger/10 px-3 py-1 text-danger">
-                  {fmt(totalOverdue)} overdue
+                  {fmtMoney(totalOverdue)} overdue
                 </Badge>
               )}
               {totalPending > 0 && (
-                <Badge variant="outline" className="border-lemon/30 bg-lemon/10 px-3 py-1 text-lemon">
-                  {fmt(totalPending)} pending
+                <Badge variant="outline" className="border-primary/30 bg-wash px-3 py-1 text-primary">
+                  {fmtMoney(totalPending)} pending
                 </Badge>
               )}
             </div>
@@ -527,7 +709,7 @@ export default function FinancePage() {
               <TabsTrigger
                 key={value}
                 value={value}
-                className="rounded-none px-4 py-2 text-sm font-semibold capitalize text-background/60 hover:text-background data-active:text-background after:bg-coral"
+                className="rounded-none px-4 py-2 text-sm font-semibold capitalize text-muted-foreground hover:text-foreground data-active:text-foreground after:bg-primary"
               >
                 {value}
               </TabsTrigger>
@@ -536,6 +718,12 @@ export default function FinancePage() {
         </section>
 
         <section className="flex flex-1 flex-col gap-5 px-4 py-5 md:px-5">
+          {actionError && (
+            <div className="rounded-lg border border-danger/20 bg-danger/5 px-4 py-3 text-sm font-medium text-danger">
+              {actionError}
+            </div>
+          )}
+
           <TabsContent value="overview" className="flex flex-col gap-5">
             <Card className="gap-4">
               <CardHeader className="gap-3">
@@ -567,7 +755,7 @@ export default function FinancePage() {
                       {metric.label}
                     </p>
                     <p className={cn('mt-2 text-2xl font-extrabold tracking-tight', metric.textClass)}>
-                      {fmt(metric.value)}
+                      {fmtMoney(metric.value)}
                     </p>
                   </div>
                 ))}
@@ -601,14 +789,14 @@ export default function FinancePage() {
                               <span className="text-sm font-semibold text-foreground">{client.name}</span>
                             </div>
                             <span className="text-sm font-semibold text-foreground">
-                              {fmt(paid)}
-                              <span className="text-muted-foreground"> / {fmt(total)}</span>
+                              {fmtMoney(paid)}
+                              <span className="text-muted-foreground"> / {fmtMoney(total)}</span>
                             </span>
                           </div>
                           <div className="h-2 rounded-full bg-muted">
                             <div
-                              className="h-full w-[var(--bar-width)] rounded-full bg-[var(--client-color)] transition-[width] duration-700"
-                              style={{ ...clientStyle(client.brand_color), ...widthStyle(pct) }}
+                              className="h-full w-[var(--bar-width)] rounded-full bg-primary transition-[width] duration-700"
+                              style={widthStyle(pct)}
                             />
                           </div>
                         </div>
@@ -641,7 +829,7 @@ export default function FinancePage() {
                               {cfg.icon} {cfg.label}
                             </span>
                             <span className={cn('text-sm font-semibold', cfg.tone)}>
-                              {fmt(categoryTotal)}
+                              {fmtMoney(categoryTotal)}
                               <span className="text-muted-foreground"> ({pct.toFixed(0)}%)</span>
                             </span>
                           </div>
@@ -677,9 +865,9 @@ export default function FinancePage() {
                       active={invFilter === filter}
                       onClick={() => setInvFilter(filter)}
                       className={cn(
-                        invFilter === filter && filter === 'paid' && 'border-success bg-success text-white hover:bg-success',
-                        invFilter === filter && filter === 'pending' && 'border-lemon bg-lemon text-foreground hover:bg-lemon',
-                        invFilter === filter && filter === 'overdue' && 'border-danger bg-danger text-white hover:bg-danger'
+                        invFilter === filter && filter === 'paid' && 'border-success bg-success text-success-foreground hover:bg-success',
+                        invFilter === filter && filter === 'pending' && 'border-primary bg-wash text-primary hover:bg-wash',
+                        invFilter === filter && filter === 'overdue' && 'border-danger bg-danger text-danger-foreground hover:bg-danger'
                       )}
                     >
                       {filter === 'all' ? `All (${invoices.length})` : filter}
@@ -693,9 +881,9 @@ export default function FinancePage() {
                     title="No invoices match this view"
                     body="Create a new invoice or adjust the status filter."
                     action={
-                      <Button onClick={() => setDrawer('invoice')} className="bg-coral text-white hover:bg-coral/85">
-                        New Invoice
-                      </Button>
+                      <Link href="/finance/invoices/new">
+                        <Button className="bg-primary text-primary-foreground hover:bg-primary/85">New Invoice</Button>
+                      </Link>
                     }
                   />
                 ) : (
@@ -714,21 +902,25 @@ export default function FinancePage() {
                     <TableBody>
                       {filteredInvoices.map(invoice => {
                         const client = normalizeOne(invoice.clients)
-                        const badge = INVOICE_STATUS_BADGE[invoice.status]
+                        const status = effectiveInvoiceStatus(invoice)
+                        const badge = INVOICE_STATUS_BADGE[status]
 
                         return (
-                          <TableRow key={invoice.id} className={cn(invoice.status === 'overdue' && 'bg-danger/5 hover:bg-danger/10')}>
+                          <TableRow key={invoice.id} className={cn(status === 'overdue' && 'bg-danger/5 hover:bg-danger/10')}>
                             <TableCell>
                               {client ? (
                                 <div className="flex items-center gap-3">
                                   <div
-                                    className="flex size-9 items-center justify-center rounded-xl bg-[var(--client-color)] text-xs font-extrabold text-white"
+                                    className={`flex size-9 items-center justify-center rounded-xl bg-[var(--client-color)] text-xs font-extrabold ${brandForeground(client.brand_color)}`}
                                     style={clientStyle(client.brand_color)}
                                   >
                                     {client.initials}
                                   </div>
                                   <div className="min-w-0">
                                     <p className="truncate font-semibold text-foreground">{client.name}</p>
+                                    {invoice.invoice_number && (
+                                      <p className="truncate font-mono text-[0.65rem] text-muted-foreground">{invoice.invoice_number}</p>
+                                    )}
                                   </div>
                                 </div>
                               ) : (
@@ -743,21 +935,26 @@ export default function FinancePage() {
                             <TableCell className="text-muted-foreground">{invoice.month}</TableCell>
                             <TableCell className="text-muted-foreground">{fmtDate(invoice.due_date)}</TableCell>
                             <TableCell>
-                              <StatusBadge status={badge.status}>{badge.label}</StatusBadge>
+                              <StatusBadge status={badge.status} dueSoon={badge.dueSoon}>{badge.label}</StatusBadge>
                             </TableCell>
                             <TableCell className="text-right text-sm font-extrabold text-foreground">
-                              {fmt(Number(invoice.amount))}
+                              {fmtMoney(Number(invoice.amount))}
                             </TableCell>
                             <TableCell className="text-right">
-                              {invoice.status === 'paid' ? (
-                                <span className="text-xs font-semibold text-success">
-                                  {paidAtLabel(invoice.paid_at)}
-                                </span>
-                              ) : (
-                                <Button variant="outline" size="sm" onClick={() => markInvoicePaid(invoice.id)}>
-                                  Mark paid
-                                </Button>
-                              )}
+                              <div className="flex items-center justify-end gap-2">
+                                <Link href={`/finance/invoices/${invoice.id}`}>
+                                  <Button variant="outline" size="sm">View</Button>
+                                </Link>
+                                {invoice.status === 'paid' ? (
+                                  <span className="text-xs font-semibold text-success">
+                                    {paidAtLabel(invoice.paid_at)}
+                                  </span>
+                                ) : (
+                                  <Button variant="outline" size="sm" onClick={() => markInvoicePaid(invoice.id)}>
+                                    Mark paid
+                                  </Button>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         )
@@ -799,7 +996,7 @@ export default function FinancePage() {
                     <p className="text-[0.7rem] font-bold uppercase tracking-[0.08em] text-success/80">
                       Total - {selectedMonth}
                     </p>
-                    <p className="text-2xl font-extrabold tracking-tight text-success">{fmt(monthPayrollTotal)}</p>
+                    <p className="text-2xl font-extrabold tracking-tight text-success">{fmtMoney(monthPayrollTotal)}</p>
                   </div>
                   <Badge variant="outline" className="border-success/20 bg-background px-3 py-1 text-success">
                     {payrollPaidCount}/{monthSalaries.length} paid
@@ -811,7 +1008,7 @@ export default function FinancePage() {
                     title="No payroll entries yet"
                     body="Add a payroll record for this month to track payouts."
                     action={
-                      <Button onClick={() => setDrawer('payroll')} className="bg-coral text-white hover:bg-coral/85">
+                      <Button onClick={openNewPayroll} className="bg-primary text-primary-foreground hover:bg-primary/85">
                         Add Payroll
                       </Button>
                     }
@@ -856,16 +1053,28 @@ export default function FinancePage() {
                               </Badge>
                             </TableCell>
                             <TableCell className={cn('text-right text-sm font-extrabold', salary.paid ? 'text-success' : 'text-danger')}>
-                              {fmt(Number(salary.amount))}
+                              {fmtMoney(Number(salary.amount))}
                             </TableCell>
                             <TableCell className="text-right">
-                              {salary.paid ? (
-                                <span className="text-xs font-semibold text-success">{paidAtLabel(salary.paid_at)}</span>
-                              ) : (
-                                <Button variant="outline" size="sm" onClick={() => markSalaryPaid(salary.id)}>
-                                  Mark paid
-                                </Button>
-                              )}
+                              <div className="flex items-center justify-end gap-1.5">
+                                {salary.paid ? (
+                                  <span className="text-xs font-semibold text-success">{paidAtLabel(salary.paid_at)}</span>
+                                ) : (
+                                  <>
+                                    <Button variant="ghost" size="sm" onClick={() => openEditPayroll(salary)}>Edit</Button>
+                                    <Button variant="outline" size="sm" onClick={() => markSalaryPaid(salary.id)}>Mark paid</Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      className="text-danger hover:bg-danger/10"
+                                      onClick={() => setDeleteTarget({ type: 'payroll', id: salary.id, label: `${member.name}'s ${salary.month} payroll entry` })}
+                                      aria-label="Delete payroll entry"
+                                    >
+                                      🗑
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         )
@@ -903,7 +1112,7 @@ export default function FinancePage() {
               <CardContent className="flex flex-col gap-4">
                 <div className="flex items-center justify-between rounded-xl border border-danger/15 bg-danger/5 px-4 py-3">
                   <span className="text-sm font-semibold text-foreground">Total shown</span>
-                  <span className="text-xl font-extrabold tracking-tight text-danger">{fmt(shownExpensesTotal)}</span>
+                  <span className="text-xl font-extrabold tracking-tight text-danger">{fmtMoney(shownExpensesTotal)}</span>
                 </div>
 
                 {filteredExpenses.length === 0 ? (
@@ -911,7 +1120,7 @@ export default function FinancePage() {
                     title="No expenses match this filter"
                     body="Log a new expense or switch to another category."
                     action={
-                      <Button onClick={() => setDrawer('expense')} className="bg-coral text-white hover:bg-coral/85">
+                      <Button onClick={openNewExpense} className="bg-primary text-primary-foreground hover:bg-primary/85">
                         Log Expense
                       </Button>
                     }
@@ -925,6 +1134,7 @@ export default function FinancePage() {
                         <TableHead>Paid by</TableHead>
                         <TableHead>Date</TableHead>
                         <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -945,7 +1155,26 @@ export default function FinancePage() {
                             <TableCell className="text-muted-foreground">{paidBy?.name || '-'}</TableCell>
                             <TableCell className="text-muted-foreground">{fmtDate(expense.date)}</TableCell>
                             <TableCell className="text-right text-sm font-extrabold text-danger">
-                              {fmt(Number(expense.amount))}
+                              {fmtMoney(Number(expense.amount))}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {expense.receipt_path && (
+                                  <Button variant="ghost" size="sm" onClick={() => viewReceipt(expense.receipt_path!)}>
+                                    📎 Receipt
+                                  </Button>
+                                )}
+                                <Button variant="ghost" size="sm" onClick={() => openEditExpense(expense)}>Edit</Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="text-danger hover:bg-danger/10"
+                                  onClick={() => setDeleteTarget({ type: 'expense', id: expense.id, label: expense.description })}
+                                  aria-label="Delete expense"
+                                >
+                                  🗑
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         )
@@ -959,115 +1188,20 @@ export default function FinancePage() {
         </section>
       </Tabs>
 
-      <Dialog open={drawer !== null} onOpenChange={open => !open && setDrawer(null)}>
+      <Dialog open={drawer !== null} onOpenChange={open => !open && closeDrawer()}>
         <DialogContent className="max-w-xl gap-4">
           {dialogConfig && (
             <>
               <DialogHeader className="gap-1">
-                <DialogTitle>{dialogConfig.title}</DialogTitle>
+                <DialogTitle>{isEditing ? dialogConfig.editTitle : dialogConfig.title}</DialogTitle>
                 <DialogDescription>{dialogConfig.description}</DialogDescription>
               </DialogHeader>
 
               <Separator />
 
-              {drawer === 'invoice' && (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <FieldBlock label="Client">
-                      <Select value={newInv.client_id || undefined} onValueChange={value => setNewInv(prev => ({ ...prev, client_id: value ?? '' }))}>
-                        <SelectTrigger className="w-full bg-background">
-                          <SelectValue placeholder="Select client" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {clients.map(client => (
-                              <SelectItem key={client.id} value={client.id}>
-                                {client.name}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </FieldBlock>
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <FieldBlock label="Description" htmlFor="invoice-description">
-                      <Input
-                        id="invoice-description"
-                        value={newInv.description}
-                        onChange={e => setNewInv(prev => ({ ...prev, description: e.target.value }))}
-                        placeholder="Monthly retainer - March 2026"
-                        className="bg-background"
-                      />
-                    </FieldBlock>
-                  </div>
-
-                  <FieldBlock label="Amount ($)" htmlFor="invoice-amount">
-                    <Input
-                      id="invoice-amount"
-                      type="number"
-                      value={newInv.amount}
-                      onChange={e => setNewInv(prev => ({ ...prev, amount: e.target.value }))}
-                      placeholder="0"
-                      className="bg-background"
-                    />
-                  </FieldBlock>
-
-                  <FieldBlock label="Status">
-                    <Select value={newInv.status} onValueChange={value => setNewInv(prev => ({ ...prev, status: value as InvoiceStatus }))}>
-                      <SelectTrigger className="w-full bg-background">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="paid">Paid</SelectItem>
-                          <SelectItem value="overdue">Overdue</SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </FieldBlock>
-
-                  <FieldBlock label="Month">
-                      <Select value={newInv.month} onValueChange={value => setNewInv(prev => ({ ...prev, month: value ?? prev.month }))}>
-                      <SelectTrigger className="w-full bg-background">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {MONTHS.map(month => (
-                            <SelectItem key={month} value={month}>
-                              {month}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </FieldBlock>
-
-                  <FieldBlock label="Due date" htmlFor="invoice-due-date">
-                    <Input
-                      id="invoice-due-date"
-                      type="date"
-                      value={newInv.due_date}
-                      onChange={e => setNewInv(prev => ({ ...prev, due_date: e.target.value }))}
-                      className="bg-background"
-                    />
-                  </FieldBlock>
-
-                  <DialogFooter className="sm:col-span-2">
-                    <Button variant="outline" onClick={() => setDrawer(null)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={submitInvoice}
-                      disabled={!newInv.description || !newInv.amount || !newInv.due_date || !newInv.client_id}
-                      className="bg-coral text-white hover:bg-coral/85"
-                    >
-                      {dialogConfig.submitLabel}
-                    </Button>
-                  </DialogFooter>
+              {dialogError && (
+                <div className="rounded-lg border border-danger/20 bg-danger/5 px-3 py-2 text-xs font-medium text-danger">
+                  {dialogError}
                 </div>
               )}
 
@@ -1103,9 +1237,11 @@ export default function FinancePage() {
                       <Input
                         id="expense-amount"
                         type="number"
+                        min="0.01"
+                        step="0.01"
                         value={newExp.amount}
                         onChange={e => setNewExp(prev => ({ ...prev, amount: e.target.value }))}
-                        placeholder="0"
+                        placeholder="0.00"
                         className="bg-background"
                       />
                     </FieldBlock>
@@ -1124,7 +1260,9 @@ export default function FinancePage() {
                   <FieldBlock label="Paid by">
                       <Select value={newExp.paid_by || undefined} onValueChange={value => setNewExp(prev => ({ ...prev, paid_by: value ?? '' }))}>
                       <SelectTrigger className="w-full bg-background">
-                        <SelectValue placeholder="Select team member" />
+                        <SelectValue placeholder="Select team member">
+                          {(value: string | null) => users.find(u => u.id === value)?.name ?? 'Select team member'}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
@@ -1138,16 +1276,45 @@ export default function FinancePage() {
                     </Select>
                   </FieldBlock>
 
+                  <FieldBlock label="Receipt (optional)">
+                    <Input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,application/pdf"
+                      onChange={e => handleReceiptSelect(e.target.files?.[0] || null)}
+                      className="bg-background"
+                    />
+                    {receiptFile && (
+                      <p className="text-xs text-muted-foreground">Selected: {receiptFile.name}</p>
+                    )}
+                    {!receiptFile && newExp.receipt_path && (
+                      <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => viewReceipt(newExp.receipt_path!)}>
+                          📎 View current receipt
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-danger"
+                          onClick={() => setNewExp(prev => ({ ...prev, receipt_path: null }))}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    )}
+                    <p className="text-[0.65rem] text-muted-foreground">Image or PDF, up to 8MB. Large expenses should always have one attached.</p>
+                  </FieldBlock>
+
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setDrawer(null)}>
+                    <Button variant="outline" onClick={closeDrawer}>
                       Cancel
                     </Button>
                     <Button
                       onClick={submitExpense}
-                      disabled={!newExp.description || !newExp.amount}
-                      className="bg-coral text-white hover:bg-coral/85"
+                      disabled={!newExp.description || !newExp.amount || saving}
+                      className="bg-primary text-primary-foreground hover:bg-primary/85"
                     >
-                      {dialogConfig.submitLabel}
+                      {saving ? 'Saving…' : dialogConfig.submitLabel}
                     </Button>
                   </DialogFooter>
                 </div>
@@ -1158,7 +1325,12 @@ export default function FinancePage() {
                   <FieldBlock label="Employee">
                       <Select value={newSal.user_id || undefined} onValueChange={value => setNewSal(prev => ({ ...prev, user_id: value ?? '' }))}>
                       <SelectTrigger className="w-full bg-background">
-                        <SelectValue placeholder="Select employee" />
+                        <SelectValue placeholder="Select employee">
+                          {(value: string | null) => {
+                            const member = users.find(u => u.id === value)
+                            return member ? `${member.name} (${member.role})` : 'Select employee'
+                          }}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
@@ -1179,9 +1351,11 @@ export default function FinancePage() {
                       <Input
                         id="salary-amount"
                         type="number"
+                        min="0.01"
+                        step="0.01"
                         value={newSal.amount}
                         onChange={e => setNewSal(prev => ({ ...prev, amount: e.target.value }))}
-                        placeholder="0"
+                        placeholder="0.00"
                         className="bg-background"
                       />
                     </FieldBlock>
@@ -1216,15 +1390,15 @@ export default function FinancePage() {
                   </FieldBlock>
 
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setDrawer(null)}>
+                    <Button variant="outline" onClick={closeDrawer}>
                       Cancel
                     </Button>
                     <Button
                       onClick={submitPayroll}
-                      disabled={!newSal.amount}
-                      className="bg-coral text-white hover:bg-coral/85"
+                      disabled={!newSal.amount || saving}
+                      className="bg-primary text-primary-foreground hover:bg-primary/85"
                     >
-                      {dialogConfig.submitLabel}
+                      {saving ? 'Saving…' : dialogConfig.submitLabel}
                     </Button>
                   </DialogFooter>
                 </div>
@@ -1233,6 +1407,23 @@ export default function FinancePage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={open => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this {deleteTarget?.type === 'expense' ? 'expense' : 'payroll entry'}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.label ? `"${deleteTarget.label}" will be permanently removed. This can't be undone.` : "This can't be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmDelete} disabled={deleting}>
+              {deleting ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   )
 }

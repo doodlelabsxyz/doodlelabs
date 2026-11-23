@@ -5,29 +5,39 @@ import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 
 import CreateUserModal from '@/components/CreateUserModal'
+import { PlanLimitDialog } from '@/components/PlanLimitDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { ClientChip } from '@/components/ui/client-chip'
+import { FilterPill } from '@/components/ui/filter-pill'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
+import { Skeleton } from '@/components/ui/skeleton'
 import { UserAvatar } from '@/components/ui/user-avatar'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import type { Role } from '@/lib/types'
+import { useOrg } from '@/lib/supabase/OrgContext'
+import { PLAN_LIMITS, type OrgPlan, type Role } from '@/lib/types'
+import { isTaskOverdue } from '@/lib/overdue'
 
 gsap.registerPlugin(useGSAP)
 
 type PageTab = 'workload' | 'manage'
 
 const ROLE_CFG: Record<Role, { label: string; colorClass: string; badgeClass: string }> = {
-  admin: { label: 'Admin', colorClass: 'text-sky', badgeClass: 'bg-sky/15 text-sky' },
-  writer: { label: 'Writer', colorClass: 'text-lavender', badgeClass: 'bg-lavender/15 text-lavender' },
-  designer: { label: 'Designer', colorClass: 'text-coral', badgeClass: 'bg-coral/15 text-coral' },
-  videographer: { label: 'Videographer', colorClass: 'text-amber-700', badgeClass: 'bg-lemon/20 text-amber-700' },
-  editor: { label: 'Editor', colorClass: 'text-mint', badgeClass: 'bg-mint/15 text-mint' },
-  poster: { label: 'Poster', colorClass: 'text-lavender', badgeClass: 'bg-lavender/15 text-lavender' },
+  admin: { label: 'Admin', colorClass: 'text-primary', badgeClass: 'bg-primary text-primary-foreground' },
+  writer: { label: 'Writer', colorClass: 'text-primary', badgeClass: 'bg-wash text-primary' },
+  designer: { label: 'Designer', colorClass: 'text-primary', badgeClass: 'bg-wash text-primary' },
+  videographer: { label: 'Videographer', colorClass: 'text-primary', badgeClass: 'bg-wash text-primary' },
+  editor: { label: 'Editor', colorClass: 'text-primary', badgeClass: 'bg-wash text-primary' },
+  poster: { label: 'Poster', colorClass: 'text-primary', badgeClass: 'bg-wash text-primary' },
   client: { label: 'Client', colorClass: 'text-muted-foreground', badgeClass: 'bg-secondary text-muted-foreground' },
 }
+
+// Dark-header overrides for the shared FilterPill
+const TEAM_PILL_BASE = 'shrink-0 whitespace-nowrap border-transparent px-3 text-xs shadow-none'
+const TEAM_PILL_IDLE = 'bg-white/7 text-dark-muted hover:bg-white/10 hover:text-dark-text'
 
 const ROLES: Role[] = ['admin', 'writer', 'designer', 'videographer', 'editor', 'poster', 'client']
 
@@ -54,33 +64,9 @@ type EmployeeRow = {
   active: boolean
 }
 
-type TaskRow = { id: string; assigned_to: string; status: string; client_id: string }
+type TaskRow = { id: string; assigned_to: string; status: string; client_id: string; due_date: string }
 type ContentRow = { id: string; title: string; status: string; assigned_to: string[]; client_id: string }
 type ClientRow = { id: string; name: string; brand_color: string }
-
-function FPill({
-  label,
-  active,
-  onClick,
-  colorClass,
-}: {
-  label: string
-  active: boolean
-  onClick: () => void
-  colorClass?: string
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap transition-colors',
-        active ? colorClass || 'bg-coral text-white' : 'bg-white/7 text-dark-muted hover:bg-white/10 hover:text-dark-text'
-      )}
-    >
-      {label}
-    </button>
-  )
-}
 
 export default function TeamPage() {
   const gridRef = useRef<HTMLDivElement>(null)
@@ -95,6 +81,12 @@ export default function TeamPage() {
   const [editingRole, setEditingRole] = useState<Role | null>(null)
   const [editingSalary, setEditingSalary] = useState('')
   const [showAddMember, setShowAddMember] = useState(false)
+  const [showLimit, setShowLimit] = useState(false)
+
+  const { org, loading: orgLoading } = useOrg()
+  const planLimits = org ? PLAN_LIMITS[org.plan as OrgPlan] : null
+  const activeMemberCount = employees.filter(u => u.active !== false).length
+  const memberCapReached = !orgLoading && !!planLimits && planLimits.maxMembers !== -1 && activeMemberCount >= planLimits.maxMembers
 
   useEffect(() => {
     async function load() {
@@ -105,7 +97,7 @@ export default function TeamPage() {
           .select('id, name, role, tasks_today, tasks_total, salary, email, phone, joined_at, active')
           .neq('role', 'client')
           .order('name'),
-        supabase.from('tasks').select('id, assigned_to, status, client_id'),
+        supabase.from('tasks').select('id, assigned_to, status, client_id, due_date'),
         supabase
           .from('content_pieces')
           .select('id, title, status, assigned_to, client_id')
@@ -131,7 +123,21 @@ export default function TeamPage() {
     )
   }, { dependencies: [mounted, pageTab, roleFilter], scope: gridRef })
 
-  if (!mounted) return null
+  if (!mounted) {
+    return (
+      <main aria-busy="true" aria-label="Loading team" className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto">
+        <section className="bg-dark px-5 pt-[18px] pb-4">
+          <Skeleton className="mb-2 h-2.5 w-14 bg-white/10" />
+          <Skeleton className="h-5 w-32 bg-white/10" />
+        </section>
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-28 w-full rounded-xl" />
+          ))}
+        </div>
+      </main>
+    )
+  }
 
   const filteredUsers = employees.filter(u => roleFilter === 'all' || u.role === roleFilter)
   const totalPayroll = employees
@@ -174,13 +180,13 @@ export default function TeamPage() {
           </div>
           <div className="flex items-center gap-3">
             <Button
-              onClick={() => setShowAddMember(true)}
-              className="bg-sky text-white hover:bg-sky/85"
+              onClick={() => (memberCapReached ? setShowLimit(true) : setShowAddMember(true))}
+              className="bg-mint text-dark hover:bg-mint/85"
             >
               Add Member
             </Button>
             <div className="text-right">
-              <p className="text-base leading-none font-extrabold text-coral">
+              <p className="text-base leading-none font-extrabold text-mint">
                 {employees.filter(u => u.active !== false).length}
               </p>
               <p className="mt-0.5 text-[0.56rem] text-dark-muted">active</p>
@@ -189,7 +195,7 @@ export default function TeamPage() {
               <>
                 <div className="h-6 w-px bg-white/7" />
                 <div className="text-right">
-                  <p className="text-sm leading-none font-extrabold text-success">
+                  <p className="text-sm leading-none font-extrabold text-mint">
                     ${totalPayroll.toLocaleString()}
                   </p>
                   <p className="mt-0.5 text-[0.56rem] text-dark-muted">payroll/mo</p>
@@ -200,15 +206,22 @@ export default function TeamPage() {
         </div>
 
         <div className="mb-2.5 flex gap-1.5 overflow-x-auto">
-          <FPill label="Everyone" active={roleFilter === 'all'} onClick={() => setRoleFilter('all')} />
+          <FilterPill
+            active={roleFilter === 'all'}
+            onClick={() => setRoleFilter('all')}
+            className={cn(TEAM_PILL_BASE, roleFilter === 'all' ? 'bg-mint text-dark' : TEAM_PILL_IDLE)}
+          >
+            Everyone
+          </FilterPill>
           {(['writer', 'designer', 'videographer', 'editor', 'poster'] as Role[]).map(r => (
-            <FPill
+            <FilterPill
               key={r}
-              label={ROLE_CFG[r].label}
               active={roleFilter === r}
-              colorClass={ROLE_CFG[r].badgeClass}
               onClick={() => setRoleFilter(roleFilter === r ? 'all' : r)}
-            />
+              className={cn(TEAM_PILL_BASE, roleFilter === r ? 'bg-mint text-dark' : TEAM_PILL_IDLE)}
+            >
+              {ROLE_CFG[r].label}
+            </FilterPill>
           ))}
         </div>
 
@@ -221,9 +234,9 @@ export default function TeamPage() {
               key={key}
               onClick={() => setPageTab(key)}
               className={cn(
-                'border-b-2 px-[18px] py-[9px] text-xs transition-colors',
+                'min-h-11 border-b-2 px-[18px] py-[9px] text-xs transition-colors',
                 pageTab === key
-                  ? 'border-coral text-coral font-bold'
+                  ? 'border-mint text-mint font-bold'
                   : 'border-transparent text-dark-muted font-medium hover:text-dark-text'
               )}
             >
@@ -240,7 +253,7 @@ export default function TeamPage() {
               const userTasks = tasks.filter(t => t.assigned_to === user.id)
               const doneTasks = userTasks.filter(t => t.status === 'done').length
               const activeTasks = userTasks.filter(t => t.status === 'in-progress').length
-              const overdueTasks = userTasks.filter(t => t.status === 'overdue').length
+              const overdueTasks = userTasks.filter(isTaskOverdue).length
               const pendingTasks = userTasks.filter(t => t.status === 'pending').length
               const totalUser = userTasks.length
               const pct = user.tasks_total > 0 ? Math.round((user.tasks_today / user.tasks_total) * 100) : 0
@@ -248,17 +261,17 @@ export default function TeamPage() {
               const loadCfg = {
                 heavy: {
                   label: 'Heavy',
-                  badgeClass: 'bg-danger/15 text-danger',
+                  badgeClass: 'bg-primary text-primary-foreground',
                   progressClass: '[&_[data-slot=progress-indicator]]:bg-danger',
                 },
                 medium: {
                   label: 'Medium',
-                  badgeClass: 'bg-warning/15 text-warning',
+                  badgeClass: 'bg-status-active text-status-active-fg',
                   progressClass: '[&_[data-slot=progress-indicator]]:bg-warning',
                 },
                 light: {
                   label: 'Light',
-                  badgeClass: 'bg-success/15 text-success',
+                  badgeClass: 'bg-status-done text-status-done-fg',
                   progressClass: '[&_[data-slot=progress-indicator]]:bg-success',
                 },
               }[load]
@@ -308,10 +321,10 @@ export default function TeamPage() {
 
                     <div className="mb-3 flex flex-wrap gap-1.5">
                       {[
-                        { n: activeTasks, label: 'Active', badgeClass: 'bg-sky/15 text-sky' },
-                        { n: pendingTasks, label: 'To Do', badgeClass: 'bg-lemon/20 text-amber-700' },
-                        { n: overdueTasks, label: 'Overdue', badgeClass: 'bg-danger/15 text-danger' },
-                        { n: doneTasks, label: 'Done', badgeClass: 'bg-success/15 text-success' },
+                        { n: activeTasks, label: 'Active', badgeClass: 'bg-status-active text-status-active-fg' },
+                        { n: pendingTasks, label: 'To Do', badgeClass: 'bg-secondary text-muted-foreground' },
+                        { n: overdueTasks, label: 'Overdue', badgeClass: 'bg-status-late text-status-late-fg' },
+                        { n: doneTasks, label: 'Done', badgeClass: 'bg-status-done text-status-done-fg' },
                       ]
                         .filter(x => x.n > 0)
                         .map(x => (
@@ -326,14 +339,12 @@ export default function TeamPage() {
                       <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
                         <span className="text-[0.6rem] text-ghost">Clients:</span>
                         {userClients.map(c => (
-                          <div
+                          <ClientChip
                             key={c.id}
-                            style={{ '--client-color': c.brand_color } as React.CSSProperties}
-                            className="flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5"
-                          >
-                            <div className="size-1.5 rounded-full bg-[var(--client-color)]" />
-                            <span className="text-[0.58rem] font-semibold text-muted-foreground">{c.name}</span>
-                          </div>
+                            name={c.name}
+                            color={c.brand_color}
+                            className="bg-secondary px-2 py-0.5 text-[0.58rem] font-semibold"
+                          />
                         ))}
                       </div>
                     )}
@@ -349,7 +360,7 @@ export default function TeamPage() {
                             return (
                               <div key={cp.id} className="flex items-center gap-1.5">
                                 <div
-                                  style={{ '--client-color': client?.brand_color || '#ccc' } as React.CSSProperties}
+                                  style={{ '--client-color': client?.brand_color || 'var(--border)' } as React.CSSProperties}
                                   className="size-1.5 shrink-0 rounded-[2px] bg-[var(--client-color)]"
                                 />
                                 <span className="flex-1 truncate text-xs text-muted-foreground">{cp.title}</span>
@@ -384,14 +395,14 @@ export default function TeamPage() {
                   key={user.id}
                   className={cn(
                     'team-item gap-0 overflow-hidden py-0 shadow-none',
-                    isExpanded ? 'border-coral/60' : 'border-border',
+                    isExpanded ? 'border-primary/60' : 'border-border',
                     isInactive && 'opacity-55'
                   )}
                   data-animate="team-item"
                 >
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : user.id)}
-                    className="flex items-center gap-3 px-4 py-3 text-left"
+                    className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left"
                   >
                     <UserAvatar userId={user.id} name={user.name} className="rounded-xl" />
                     <div className="min-w-0 flex-1">
@@ -458,7 +469,7 @@ export default function TeamPage() {
                               key={r}
                               onClick={() => setEditingRole(editingRole === r ? null : r)}
                               className={cn(
-                                'rounded-full border px-3 py-1 text-[0.62rem] font-bold transition-colors',
+                                'rounded-full border px-3 py-1 text-[0.62rem] font-bold transition-colors pointer-coarse:min-h-11',
                                 (editingRole || user.role) === r
                                   ? `${ROLE_CFG[r].badgeClass} border-transparent`
                                   : 'border-border bg-card text-muted-foreground hover:bg-secondary'
@@ -472,7 +483,7 @@ export default function TeamPage() {
                           <Button
                             size="xs"
                             onClick={() => saveRole(user.id)}
-                            className="mt-1.5 bg-primary text-white"
+                            className="mt-1.5 bg-primary text-primary-foreground"
                           >
                             Save → {ROLE_CFG[editingRole].label}
                           </Button>
@@ -495,7 +506,7 @@ export default function TeamPage() {
                             size="sm"
                             onClick={() => saveSalary(user.id)}
                             disabled={!editingSalary}
-                            className="bg-success text-white hover:bg-success/85"
+                            className="bg-success text-success-foreground hover:bg-success/85"
                           >
                             Save
                           </Button>
@@ -510,7 +521,7 @@ export default function TeamPage() {
                           {ACCESS_BY_ROLE[user.role].map(perm => (
                             <Badge
                               key={perm}
-                              className="border-0 bg-sky/15 text-[0.6rem] font-semibold text-sky"
+                              className="border-0 bg-wash text-[0.6rem] font-semibold text-primary"
                             >
                               {perm}
                             </Badge>
@@ -537,6 +548,16 @@ export default function TeamPage() {
             })}
           </div>
         </div>
+      )}
+
+      {planLimits && (
+        <PlanLimitDialog
+          open={showLimit}
+          onClose={() => setShowLimit(false)}
+          resource="team members"
+          plan={org!.plan as OrgPlan}
+          limit={planLimits.maxMembers}
+        />
       )}
 
       {showAddMember && (

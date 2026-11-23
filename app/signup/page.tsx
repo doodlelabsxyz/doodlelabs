@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useId } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useGSAP } from '@gsap/react'
@@ -23,6 +23,8 @@ export default function SignupPage() {
   const [slugEdited,   setSlugEdited]   = useState(false)
   const [submitting,   setSubmitting]   = useState(false)
   const [error,        setError]        = useState('')
+  const uid = useId()
+  const errId = `${uid}-error`
   const leftRef = useRef<HTMLDivElement>(null)
   const formRef = useRef<HTMLDivElement>(null)
 
@@ -87,8 +89,10 @@ export default function SignupPage() {
     }
   }
 
-  const brand = 'hsl(25,82%,60%)'
-  const canSubmit = fullName && email && password && agencyName && slug
+  const ringCls = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+  const inputCls = `w-full min-h-11 rounded-xl border-[1.5px] border-border bg-background px-[15px] py-[13px] text-sm font-medium text-foreground transition-colors placeholder:text-muted-foreground aria-invalid:border-danger focus-visible:border-primary ${ringCls}`
+  const labelCls = 'text-[0.73rem] font-semibold text-muted-foreground'
+  const canSubmit = !!(fullName && email && password && agencyName && slug)
 
   return (
     <div className="flex min-h-dvh flex-col md:flex-row">
@@ -96,50 +100,49 @@ export default function SignupPage() {
       {/* ── LEFT: dark brand panel ──────────────────────────────────────── */}
       <div
         ref={leftRef}
-        className="relative flex flex-col justify-between w-full md:flex-1 pt-10 pb-10 px-8 md:pt-14 md:pb-14 md:px-12"
-        style={{ background: '#0F1A14', minHeight: '320px' }}
+        className="relative flex min-h-[320px] w-full flex-col justify-between bg-dark px-8 pt-10 pb-10 md:flex-1 md:px-12 md:pt-14 md:pb-14"
       >
         {/* Decorative blobs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden>
-          <div style={{ position:'absolute', top:'-60px', right:'-60px', width:'280px', height:'280px', borderRadius:'50%', background:`${brand}18` }} />
-          <div style={{ position:'absolute', bottom:'-50px', left:'-50px', width:'200px', height:'200px', borderRadius:'50%', background:`${brand}12` }} />
-          <div style={{ position:'absolute', top:'40%', left:'-20px', width:'90px', height:'90px', borderRadius:'50%', background:`${brand}0e` }} />
+          <div className="absolute -top-[60px] -right-[60px] size-[280px] rounded-full bg-mint/10" />
+          <div className="absolute -bottom-[50px] -left-[50px] size-[200px] rounded-full bg-mint/[0.07]" />
+          <div className="absolute top-[40%] -left-5 size-[90px] rounded-full bg-mint/[0.05]" />
         </div>
 
         {/* Logo */}
         <div className="relative z-10 flex items-center gap-2.5">
           <svg width="28" height="28" viewBox="0 0 30 30" fill="none">
-            <rect width="30" height="30" rx="9" fill={brand}/>
-            <path d="M9 22L15 8l6 14M11.5 17.5h7" stroke="hsl(42,30%,99%)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+            <rect width="30" height="30" rx="9" className="fill-mint"/>
+            <path d="M9 22L15 8l6 14M11.5 17.5h7" className="stroke-dark" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          <span className="font-bold text-base" style={{ color: 'hsl(42,22%,84%)', letterSpacing: '-0.01em' }}>
-            Agency<span style={{ color: brand }}>OS</span>
+          <span className="text-base font-bold tracking-[-0.01em] text-dark-text">
+            Agency<span className="text-mint">OS</span>
           </span>
         </div>
 
         {/* Tagline */}
         <div className="relative z-10">
-          <p style={{ fontSize:'1.4rem', fontWeight:800, color:'hsl(42,22%,84%)', lineHeight:1.1, letterSpacing:'-0.02em' }}>
+          <p className="text-[1.4rem] font-extrabold leading-[1.1] tracking-[-0.02em] text-dark-text">
             Set up your<br />agency workspace.
           </p>
-          <p style={{ fontSize:'0.875rem', color:'hsl(140,7%,48%)', marginTop:'8px', lineHeight:1.6 }}>
+          <p className="mt-2 text-sm leading-relaxed text-dark-muted">
             Your whole team. All your clients.<br />One place to plan and create.
           </p>
 
           {/* Plan highlights */}
-          <div style={{ marginTop: '28px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div className="mt-7 flex flex-col gap-2.5">
             {[
               '14-day free trial — no credit card needed',
               'Unlimited content planning & pipelines',
               'Client portal + approval flows',
             ].map(txt => (
-              <div key={txt} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: 18, height: 18, borderRadius: '50%', background: `${brand}30`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink: 0 }}>
+              <div key={txt} className="flex items-center gap-2.5">
+                <div className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-mint/20">
                   <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                    <path d="M2 6l3 3 5-5" stroke={brand} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M2 6l3 3 5-5" className="stroke-mint" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </div>
-                <span style={{ fontSize:'0.78rem', color:'hsl(140,7%,55%)' }}>{txt}</span>
+                <span className="text-[0.78rem] text-dark-muted">{txt}</span>
               </div>
             ))}
           </div>
@@ -149,109 +152,102 @@ export default function SignupPage() {
       </div>
 
       {/* ── RIGHT: form panel ─────────────────────────────────────────────── */}
-      <div
-        className="flex flex-col justify-center items-center w-full md:flex-1 px-8 py-12 md:px-14 lg:px-20"
-        style={{ background: 'hsl(42,30%,97%)' }}
-      >
-        <div ref={formRef} className="w-full" style={{ maxWidth: '420px' }}>
+      <div className="flex w-full flex-col items-center justify-center bg-surface px-8 py-12 md:flex-1 md:px-14 lg:px-20">
+        <div ref={formRef} className="w-full max-w-[420px]">
 
-          <div style={{ marginBottom: '28px' }}>
-            <h1 className="font-bold" style={{ fontSize:'1.5rem', color:'hsl(24,20%,11%)', lineHeight:1.1, letterSpacing:'-0.02em' }}>
+          <div className="mb-7">
+            <h1 className="text-2xl font-bold leading-[1.1] tracking-[-0.02em] text-foreground">
               Create your account
             </h1>
-            <p style={{ fontSize:'0.875rem', color:'hsl(24,10%,44%)', marginTop:'8px' }}>
+            <p className="mt-2 text-sm text-muted-foreground">
               Already have an account?{' '}
-              <Link href="/login" style={{ color: brand, fontWeight: 600, textDecoration: 'none' }}>Sign in</Link>
+              <Link href="/login" className={`rounded-sm font-semibold text-primary underline-offset-4 hover:underline ${ringCls}`}>Sign in</Link>
             </p>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div className="flex flex-col gap-3.5">
 
             {/* Section: You */}
-            <p style={{ fontSize:'0.62rem', fontWeight:700, color:'hsl(24,8%,55%)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:'-4px' }}>Your details</p>
+            <p className="-mb-1 text-[0.62rem] font-bold uppercase tracking-[0.07em] text-muted-foreground">Your details</p>
 
             {[
-              { label: 'Full name',       value: fullName,   set: setFullName,   type: 'text',     placeholder: 'Sarah Malik' },
-              { label: 'Email address',   value: email,      set: setEmail,      type: 'email',    placeholder: 'you@youragency.com' },
-              { label: 'Password',        value: password,   set: setPassword,   type: 'password', placeholder: '8+ characters' },
+              { label: 'Full name',       value: fullName,   set: setFullName,   type: 'text',     placeholder: 'Sarah Malik', auto: 'name', mode: undefined },
+              { label: 'Email address',   value: email,      set: setEmail,      type: 'email',    placeholder: 'you@youragency.com', auto: 'email', mode: 'email' as const },
+              { label: 'Password',        value: password,   set: setPassword,   type: 'password', placeholder: '8+ characters', auto: 'new-password', mode: undefined },
             ].map(f => (
-              <div key={f.label} style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-                <label style={{ fontSize:'0.73rem', fontWeight:600, color:'hsl(24,10%,44%)' }}>{f.label}</label>
+              <div key={f.label} className="flex flex-col gap-1.5">
+                <label htmlFor={`${uid}-${f.auto}`} className={labelCls}>{f.label}</label>
                 <input
+                  id={`${uid}-${f.auto}`}
                   type={f.type}
+                  autoComplete={f.auto}
+                  inputMode={f.mode}
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? errId : undefined}
                   value={f.value}
                   onChange={e => f.set(e.target.value)}
                   placeholder={f.placeholder}
-                  className="w-full outline-none font-medium"
-                  style={{ padding:'13px 15px', borderRadius:'12px', background:'hsl(40,18%,94%)', border:'1.5px solid hsl(38,14%,88%)', fontSize:'0.875rem', color:'hsl(24,20%,11%)', transition:'border-color 0.15s' }}
-                  onFocus={e => { e.target.style.borderColor = brand }}
-                  onBlur={e => { e.target.style.borderColor = 'hsl(38,14%,88%)' }}
+                  className={inputCls}
                   onKeyDown={e => { if (e.key === 'Enter') handleSubmit() }}
                 />
               </div>
             ))}
 
             {/* Section: Agency */}
-            <p style={{ fontSize:'0.62rem', fontWeight:700, color:'hsl(24,8%,55%)', textTransform:'uppercase', letterSpacing:'0.07em', marginTop:'6px', marginBottom:'-4px' }}>Your agency</p>
+            <p className="-mb-1 mt-1.5 text-[0.62rem] font-bold uppercase tracking-[0.07em] text-muted-foreground">Your agency</p>
 
-            <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-              <label style={{ fontSize:'0.73rem', fontWeight:600, color:'hsl(24,10%,44%)' }}>Agency name</label>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor={`${uid}-agency`} className={labelCls}>Agency name</label>
               <input
+                id={`${uid}-agency`}
                 type="text"
+                autoComplete="organization"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? errId : undefined}
                 value={agencyName}
                 onChange={e => handleAgencyNameChange(e.target.value)}
                 placeholder="FreshMint Creative"
-                className="w-full outline-none font-medium"
-                style={{ padding:'13px 15px', borderRadius:'12px', background:'hsl(40,18%,94%)', border:'1.5px solid hsl(38,14%,88%)', fontSize:'0.875rem', color:'hsl(24,20%,11%)', transition:'border-color 0.15s' }}
-                onFocus={e => { e.target.style.borderColor = brand }}
-                onBlur={e => { e.target.style.borderColor = 'hsl(38,14%,88%)' }}
+                className={inputCls}
               />
             </div>
 
-            <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-              <label style={{ fontSize:'0.73rem', fontWeight:600, color:'hsl(24,10%,44%)' }}>Workspace URL</label>
-              <div style={{ position:'relative' }}>
-                <span style={{ position:'absolute', left:'15px', top:'50%', transform:'translateY(-50%)', fontSize:'0.8rem', color:'hsl(24,8%,55%)', fontWeight:500, pointerEvents:'none' }}>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor={`${uid}-slug`} className={labelCls}>Workspace URL</label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-[15px] top-1/2 -translate-y-1/2 text-[0.8rem] font-medium text-muted-foreground">
                   agencyos.app/
                 </span>
                 <input
+                  id={`${uid}-slug`}
                   type="text"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? errId : undefined}
                   value={slug}
                   onChange={e => handleSlugChange(e.target.value)}
                   placeholder="freshmint"
-                  className="w-full outline-none font-medium"
-                  style={{ padding:'13px 15px 13px 106px', borderRadius:'12px', background:'hsl(40,18%,94%)', border:'1.5px solid hsl(38,14%,88%)', fontSize:'0.875rem', color:'hsl(24,20%,11%)', transition:'border-color 0.15s' }}
-                  onFocus={e => { e.target.style.borderColor = brand }}
-                  onBlur={e => { e.target.style.borderColor = 'hsl(38,14%,88%)' }}
+                  className={`${inputCls} !pl-[106px]`}
                 />
               </div>
             </div>
 
             {error && (
-              <p style={{ fontSize:'0.78rem', color:'hsl(4,72%,50%)', fontWeight:500 }}>{error}</p>
+              <p id={errId} role="alert" className="text-[0.78rem] font-medium text-danger">{error}</p>
             )}
 
             <button
               onClick={handleSubmit}
               disabled={submitting || !canSubmit}
-              className="w-full font-bold"
-              style={{
-                marginTop:'4px', padding:'16px 24px', borderRadius:'9999px',
-                background: !canSubmit ? 'hsl(38,14%,82%)' : brand,
-                color: 'hsl(42,30%,99%)', fontSize:'0.9rem', letterSpacing:'0.02em',
-                boxShadow: !canSubmit ? 'none' : `0 6px 24px ${brand}45`,
-                transition:'background 0.2s, box-shadow 0.2s, transform 0.1s, opacity 0.1s',
-                opacity: submitting ? 0.75 : 1,
-                cursor: !canSubmit ? 'not-allowed' : 'pointer',
-              }}
-              onMouseEnter={e => { if (canSubmit && !submitting) (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)' }}
+              aria-busy={submitting}
+              className={`mt-1 min-h-11 w-full cursor-pointer rounded-full bg-primary px-6 py-4 text-[0.9rem] font-bold tracking-[0.02em] text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:not-disabled:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-border disabled:text-muted-foreground disabled:shadow-none aria-busy:opacity-75 ${ringCls}`}
             >
               {submitting ? 'Creating workspace…' : 'Create workspace'}
             </button>
           </div>
 
-          <p className="text-center" style={{ marginTop:'20px', fontSize:'0.7rem', color:'hsl(24,8%,58%)', lineHeight:1.6 }}>
+          <p className="mt-5 text-center text-[0.7rem] leading-relaxed text-muted-foreground">
             By signing up you agree to our Terms of Service<br />and Privacy Policy.
           </p>
         </div>

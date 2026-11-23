@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -50,6 +50,10 @@ type Member = {
 
 type Tab = 'profile' | 'organisation' | 'team' | 'billing'
 
+const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
+const LOGO_ACCEPT = '.png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml'
+const LOGO_MAX_BYTES = 2 * 1024 * 1024
+
 function InviteModal({ onClose }: { onClose: () => void }) {
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<Role>('writer')
@@ -79,7 +83,7 @@ function InviteModal({ onClose }: { onClose: () => void }) {
   return (
     <Dialog open onOpenChange={open => !open && onClose()}>
       <DialogContent className="max-w-md gap-4">
-        <div className="absolute inset-x-0 top-0 h-1.5 rounded-t-xl bg-coral" />
+        <div className="absolute inset-x-0 top-0 h-1.5 rounded-t-xl bg-primary" />
         <DialogHeader className="pt-2">
           <DialogTitle>Invite team member</DialogTitle>
           <DialogDescription>
@@ -128,7 +132,7 @@ function InviteModal({ onClose }: { onClose: () => void }) {
               <Button variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button onClick={handleSend} disabled={!email || sending} className="bg-coral text-white hover:bg-coral/85">
+              <Button onClick={handleSend} disabled={!email || sending} className="bg-primary text-primary-foreground hover:bg-primary/85">
                 {sending ? 'Sending...' : 'Send invite'}
               </Button>
             </DialogFooter>
@@ -140,7 +144,7 @@ function InviteModal({ onClose }: { onClose: () => void }) {
               <p className="text-sm font-bold text-foreground">Invite sent to {email}</p>
               <p className="text-xs text-muted-foreground">They can complete setup from the invite email.</p>
             </div>
-            <Button onClick={onClose} className="bg-coral text-white hover:bg-coral/85">
+            <Button onClick={onClose} className="bg-primary text-primary-foreground hover:bg-primary/85">
               Done
             </Button>
           </div>
@@ -166,6 +170,35 @@ export default function SettingsPage() {
   const [orgSlug, setOrgSlug] = useState('')
   const [orgSaving, setOrgSaving] = useState(false)
   const [orgMsg, setOrgMsg] = useState('')
+
+  // Logo lives in the private 'assets' bucket: store the path, display via signed URL
+  const logoPath = (org as { logo_path?: string | null } | null)?.logo_path ?? null
+  const logoInputRef = useRef<HTMLInputElement>(null)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [logoLoading, setLogoLoading] = useState(false)
+  const [logoUploading, setLogoUploading] = useState(false)
+  const [logoError, setLogoError] = useState('')
+  const shownLogo = logoPreview ?? logoUrl
+
+  useEffect(() => {
+    if (!logoPath) return
+    let cancelled = false
+    async function signLogo() {
+      setLogoLoading(true)
+      const { data, error } = await createClient()
+        .storage.from('assets')
+        .createSignedUrl(logoPath as string, 3600)
+      if (cancelled) return
+      setLogoUrl(data?.signedUrl ?? null)
+      if (error) setLogoError('Could not load the current logo.')
+      setLogoLoading(false)
+    }
+    void signLogo()
+    return () => {
+      cancelled = true
+    }
+  }, [logoPath])
 
   useEffect(() => {
     async function load() {
@@ -214,6 +247,62 @@ export default function SettingsPage() {
     await supabase.auth.signOut()
   }
 
+  async function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !org || logoUploading) return
+    setLogoError('')
+    if (!LOGO_TYPES.includes(file.type)) {
+      setLogoError('Use a PNG, JPG, WebP or SVG file.')
+      return
+    }
+    if (file.size > LOGO_MAX_BYTES) {
+      setLogoError('Logo must be 2MB or smaller.')
+      return
+    }
+
+    const previewUrl = URL.createObjectURL(file)
+    setLogoPreview(previewUrl)
+    setLogoUploading(true)
+
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-')
+    const path = `${org.id}/logo/${crypto.randomUUID()}-${safeName}`
+    const fail = async (message: string, uploadedPath?: string) => {
+      if (uploadedPath) await supabase.storage.from('assets').remove([uploadedPath])
+      setLogoError(message)
+      setLogoPreview(null)
+      URL.revokeObjectURL(previewUrl)
+      setLogoUploading(false)
+    }
+
+    const { error: upErr } = await supabase.storage
+      .from('assets')
+      .upload(path, file, { contentType: file.type })
+    if (upErr) {
+      await fail(`Upload failed: ${upErr.message}`)
+      return
+    }
+
+    const { error: dbErr } = await supabase
+      .from('organizations')
+      .update({ logo_path: path })
+      .eq('id', org.id)
+    if (dbErr) {
+      await fail(`Failed to save: ${dbErr.message}`, path)
+      return
+    }
+
+    const oldPath = logoPath
+    await refreshOrg()
+    if (oldPath && oldPath !== path) {
+      // Best effort: admins may delete objects in their org
+      await supabase.storage.from('assets').remove([oldPath])
+    }
+    setLogoPreview(null)
+    URL.revokeObjectURL(previewUrl)
+    setLogoUploading(false)
+  }
+
   async function handleSaveOrg() {
     if (!org || orgSaving) return
     setOrgSaving(true)
@@ -258,7 +347,7 @@ export default function SettingsPage() {
               <TabsTrigger
                 key={t.key}
                 value={t.key}
-                className="px-3 py-2 text-xs data-active:text-foreground data-active:after:bg-coral"
+                className="px-3 py-2 text-xs data-active:text-foreground data-active:after:bg-primary"
               >
                 {t.label}
               </TabsTrigger>
@@ -309,11 +398,11 @@ export default function SettingsPage() {
                   disabled={loggingOut}
                   className="h-auto w-full justify-start gap-3 rounded-xl px-0 py-2 text-left hover:bg-danger/5"
                 >
-                  <div className="flex size-[34px] shrink-0 items-center justify-center rounded-[10px] bg-danger/10">
+                  <div className="flex size-[34px] shrink-0 items-center justify-center rounded-[10px] bg-danger/10 text-danger">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                       <path
                         d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
-                        stroke="hsl(4,72%,52%)"
+                        stroke="currentColor"
                         strokeWidth="1.8"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -340,25 +429,43 @@ export default function SettingsPage() {
               </p>
 
               <div className="flex items-center gap-4">
-                <div className="flex size-14 items-center justify-center rounded-[14px] border border-dashed border-border bg-secondary">
-                  {org?.logo_url ? (
+                <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-dashed border-border bg-wash text-muted">
+                  {shownLogo ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={org.logo_url}
-                      alt="logo"
-                      className="size-full rounded-xl object-cover"
-                    />
+                    <img src={shownLogo} alt="Agency logo" className="size-full object-cover" />
                   ) : (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <rect x="3" y="3" width="18" height="18" rx="4" stroke="hsl(24,8%,65%)" strokeWidth="1.5" />
-                      <circle cx="8.5" cy="8.5" r="1.5" fill="hsl(24,8%,65%)" />
-                      <path d="M21 15l-5-5L5 21" stroke="hsl(24,8%,65%)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      <rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" strokeWidth="1.5" />
+                      <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" />
+                      <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   )}
+                  {(logoUploading || logoLoading) && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-card/70">
+                      <span className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    </div>
+                  )}
                 </div>
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-foreground">Agency logo</p>
-                  <p className="text-xs text-muted-foreground">Logo upload coming soon</p>
+                  <p className="text-xs text-muted-foreground">PNG, JPG, WebP or SVG, up to 2MB</p>
+                  {logoError && <p className="mt-1 text-xs font-semibold text-danger">{logoError}</p>}
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept={LOGO_ACCEPT}
+                    className="hidden"
+                    onChange={handleLogoChange}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={logoUploading}
+                    className="mt-2 rounded-full"
+                  >
+                    {logoUploading ? 'Uploading...' : logoPath ? 'Replace logo' : 'Upload logo'}
+                  </Button>
                 </div>
               </div>
 
@@ -381,7 +488,7 @@ export default function SettingsPage() {
               <Button
                 onClick={handleSaveOrg}
                 disabled={orgSaving}
-                className="rounded-full bg-coral text-white hover:bg-coral/85"
+                className="rounded-full bg-primary text-primary-foreground hover:bg-primary/85"
               >
                 {orgSaving ? 'Saving...' : 'Save changes'}
               </Button>
@@ -393,7 +500,7 @@ export default function SettingsPage() {
                 </div>
                 <Link
                   href="/settings/billing"
-                  className="rounded-full bg-coral px-4 py-2 text-xs font-bold text-white"
+                  className="inline-flex min-h-11 items-center rounded-full bg-primary px-4 py-2 text-xs font-bold text-primary-foreground"
                 >
                   Manage billing
                 </Link>
@@ -410,7 +517,7 @@ export default function SettingsPage() {
               </p>
               <Button
                 onClick={() => setShowInvite(true)}
-                className="rounded-full bg-coral text-white hover:bg-coral/85"
+                className="rounded-full bg-primary text-primary-foreground hover:bg-primary/85"
               >
                 Invite member
               </Button>
@@ -457,10 +564,10 @@ export default function SettingsPage() {
         {activeTab === 'billing' && (
           <Card className="border border-border py-0 shadow-none">
             <CardContent className="flex flex-col items-center gap-4 py-8 text-center">
-              <div className="flex size-14 items-center justify-center rounded-2xl bg-sky/10">
+              <div className="flex size-14 items-center justify-center rounded-2xl bg-wash text-primary">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                  <rect x="2" y="6" width="20" height="14" rx="3" stroke="hsl(200,72%,50%)" strokeWidth="1.8" />
-                  <path d="M2 10h20M6 14h4M16 14h2" stroke="hsl(200,72%,50%)" strokeWidth="1.8" strokeLinecap="round" />
+                  <rect x="2" y="6" width="20" height="14" rx="3" stroke="currentColor" strokeWidth="1.8" />
+                  <path d="M2 10h20M6 14h4M16 14h2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                 </svg>
               </div>
               <div>
@@ -471,7 +578,7 @@ export default function SettingsPage() {
               </div>
               <Link
                 href="/settings/billing"
-                className="rounded-full bg-coral px-7 py-3 text-sm font-bold text-white"
+                className="inline-flex min-h-11 items-center rounded-full bg-primary px-7 py-3 text-sm font-bold text-primary-foreground"
               >
                 Go to Billing
               </Link>

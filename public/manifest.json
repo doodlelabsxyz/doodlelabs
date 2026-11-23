@@ -1,0 +1,16 @@
+{
+  "name": "AgencyOS",
+  "short_name": "AgencyOS",
+  "description": "Content planning and workflow management for digital marketing agencies.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#14532D",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ]
+}

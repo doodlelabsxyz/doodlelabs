@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/supabase/useUser'
@@ -37,54 +38,54 @@ const TYPE_CFG: Record<
   'task-assigned': {
     icon: '📋',
     label: 'Assigned',
-    accentClass: 'text-sky',
-    iconClass: 'bg-sky/15 text-sky',
-    badgeClass: 'bg-sky/15 text-sky',
+    accentClass: 'text-primary',
+    iconClass: 'bg-wash text-primary',
+    badgeClass: 'bg-wash text-primary',
     readBorderClass: 'border-border',
-    unreadBorderClass: 'border-sky/30',
+    unreadBorderClass: 'border-primary/30',
   },
   'task-overdue': {
     icon: '⚠️',
     label: 'Overdue',
     accentClass: 'text-danger',
-    iconClass: 'bg-danger/15 text-danger',
-    badgeClass: 'bg-danger/15 text-danger',
+    iconClass: 'bg-status-late text-status-late-fg',
+    badgeClass: 'bg-status-late text-status-late-fg',
     readBorderClass: 'border-border',
     unreadBorderClass: 'border-danger/30',
   },
   'approval-needed': {
     icon: '👀',
     label: 'Review',
-    accentClass: 'text-coral',
-    iconClass: 'bg-coral/15 text-coral',
-    badgeClass: 'bg-coral/15 text-coral',
+    accentClass: 'text-primary',
+    iconClass: 'bg-wash text-primary',
+    badgeClass: 'bg-wash text-primary',
     readBorderClass: 'border-border',
-    unreadBorderClass: 'border-coral/30',
+    unreadBorderClass: 'border-primary/30',
   },
   'client-note': {
     icon: '💬',
     label: 'Client',
-    accentClass: 'text-lavender',
-    iconClass: 'bg-lavender/15 text-lavender',
-    badgeClass: 'bg-lavender/15 text-lavender',
+    accentClass: 'text-muted-foreground',
+    iconClass: 'bg-sage text-foreground',
+    badgeClass: 'bg-sage text-foreground',
     readBorderClass: 'border-border',
-    unreadBorderClass: 'border-lavender/30',
+    unreadBorderClass: 'border-border',
   },
   'plan-reminder': {
     icon: '🗓',
     label: 'Reminder',
-    accentClass: 'text-mint',
-    iconClass: 'bg-mint/15 text-mint',
-    badgeClass: 'bg-mint/15 text-mint',
+    accentClass: 'text-primary',
+    iconClass: 'bg-sage text-foreground',
+    badgeClass: 'bg-sage text-foreground',
     readBorderClass: 'border-border',
-    unreadBorderClass: 'border-mint/30',
+    unreadBorderClass: 'border-primary/30',
   },
   'content-approved': {
     icon: '✅',
     label: 'Approved',
     accentClass: 'text-success',
-    iconClass: 'bg-success/15 text-success',
-    badgeClass: 'bg-success/15 text-success',
+    iconClass: 'bg-status-done text-status-done-fg',
+    badgeClass: 'bg-status-done text-status-done-fg',
     readBorderClass: 'border-border',
     unreadBorderClass: 'border-success/30',
   },
@@ -103,7 +104,13 @@ type NotifRow = {
 }
 
 function timeAgo(s: string): string {
-  const diff = Math.round((Date.now() - new Date(s).getTime()) / 86400000)
+  const d = new Date(s)
+  const now = new Date()
+  const diff = Math.round(
+    (new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() -
+      new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) /
+      86400000
+  )
   if (diff === 0) return 'Today'
   if (diff === 1) return 'Yesterday'
   if (diff < 7) return `${diff}d ago`
@@ -126,8 +133,8 @@ function FilterChip({
       onClick={onClick}
       className={cn(
         'rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap transition-colors',
-        active && highlight && 'bg-danger text-white',
-        active && !highlight && 'bg-coral text-white',
+        active && highlight && 'bg-danger text-danger-foreground',
+        active && !highlight && 'bg-mint text-dark',
         !active && highlight && 'bg-white/7 text-danger',
         !active && !highlight && 'bg-white/7 text-dark-muted'
       )}
@@ -158,10 +165,11 @@ export default function NotificationsPage() {
     const supabase = createClient()
 
     async function load() {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('notifications')
         .select('*')
         .order('created_at', { ascending: false })
+      if (error) console.error('notifications load failed', error)
       setNotifs(data || [])
       setMounted(true)
     }
@@ -177,7 +185,7 @@ export default function NotificationsPage() {
       .subscribe()
 
     return () => {
-      channel.unsubscribe()
+      void supabase.removeChannel(channel)
     }
   }, [])
 
@@ -193,7 +201,8 @@ export default function NotificationsPage() {
   const markRead = useCallback(async (id: string) => {
     setNotifs(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)))
     const supabase = createClient()
-    await supabase.from('notifications').update({ read: true }).eq('id', id)
+    const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id)
+    if (error) setNotifs(prev => prev.map(n => (n.id === id ? { ...n, read: false } : n)))
   }, [])
 
   const markAllRead = useCallback(async () => {
@@ -202,7 +211,21 @@ export default function NotificationsPage() {
     await supabase.from('notifications').update({ read: true }).eq('read', false)
   }, [])
 
-  if (!mounted) return null
+  if (!mounted) {
+    return (
+      <main aria-busy="true" aria-label="Loading notifications" className="page-main relative flex min-w-0 flex-1 flex-col overflow-y-auto">
+        <section className="bg-dark px-5 pt-[18px] pb-4">
+          <Skeleton className="mb-2 h-2.5 w-14 bg-white/10" />
+          <Skeleton className="h-5 w-32 bg-white/10" />
+        </section>
+        <div className="space-y-3 p-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full rounded-xl" />
+          ))}
+        </div>
+      </main>
+    )
+  }
 
   const unreadCount = notifs.filter(n => !n.read).length
 
@@ -243,8 +266,8 @@ export default function NotificationsPage() {
   return (
     <main className="page-main relative flex min-w-0 flex-1 flex-col overflow-y-auto">
       {toast && (
-        <div className="fixed top-4 left-1/2 z-[999] flex -translate-x-1/2 items-center gap-2 rounded-full bg-dark px-4 py-2 text-sm font-semibold text-dark-text shadow-[0_4px_20px_rgba(15,26,20,0.4)]">
-          <span className="inline-block size-2 rounded-full bg-coral" />
+        <div className="fixed top-4 left-1/2 z-[999] flex -translate-x-1/2 items-center gap-2 rounded-full bg-dark px-4 py-2 text-sm font-semibold text-dark-text shadow-lg">
+          <span className="inline-block size-2 rounded-full bg-mint" />
           {toast}
         </div>
       )}

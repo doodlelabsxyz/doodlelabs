@@ -6,6 +6,8 @@ import gsap from 'gsap'
 
 import AddClientModal from '@/components/AddClientModal'
 import CreateUserModal from '@/components/CreateUserModal'
+import { PlanLimitDialog } from '@/components/PlanLimitDialog'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -28,6 +30,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { PlatformBadge } from '@/components/ui/platform-badge'
 import { StatusBadge } from '@/components/ui/status-badge'
 import {
   Table,
@@ -41,8 +44,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { UserAvatar } from '@/components/ui/user-avatar'
 import { createClient } from '@/lib/supabase/client'
+import { useOrg } from '@/lib/supabase/OrgContext'
 import { useUser } from '@/lib/supabase/useUser'
+import { PLAN_LIMITS, needsClientAction, type OrgPlan, type Platform } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { effectiveInvoiceStatus } from '@/lib/finance'
 
 gsap.registerPlugin(useGSAP)
 
@@ -60,9 +66,9 @@ const ROLE_LABELS: Record<AssignableRole, string> = {
   poster: 'Poster',
 }
 
-const INVOICE_BADGE: Record<InvoiceStatus, { status: 'approved' | 'planned' | 'overdue'; label: string }> = {
+const INVOICE_BADGE: Record<InvoiceStatus, { status: 'approved' | 'planned' | 'overdue'; label: string; dueSoon?: boolean }> = {
   paid: { status: 'approved', label: 'Paid' },
-  pending: { status: 'planned', label: 'Pending' },
+  pending: { status: 'planned', label: 'Pending', dueSoon: true },
   overdue: { status: 'overdue', label: 'Overdue' },
 }
 
@@ -71,7 +77,7 @@ type ClientRow = {
   name: string
   industry: string
   brand_color: string
-  platforms: string[]
+  platforms: Platform[]
   requires_client_approval: boolean
   initials: string
   pending_approvals: number
@@ -80,7 +86,7 @@ type ClientRow = {
   contact_email: string | null
   contract_start: string | null
   notes: string | null
-  content_this_month: number
+  content_quota: number
 }
 
 type InvoiceRow = {
@@ -137,6 +143,20 @@ function paidAtLabel(date: string | null) {
   return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+/** Token-based readable foreground for a client's own brand color (hex or hsl). */
+function brandForeground(color: string): string {
+  let lightness = 0.4
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim())
+  const hsl = /^hsl\(\s*[\d.]+\s*,\s*[\d.]+%\s*,\s*([\d.]+)%/i.exec(color.trim())
+  if (hsl) lightness = Number(hsl[1]) / 100
+  else if (hex) {
+    const h = hex[1].length === 3 ? hex[1].replace(/./g, c => c + c) : hex[1]
+    const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255)
+    lightness = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+  return lightness > 0.55 ? 'text-dark' : 'text-dark-text'
+}
+
 function clientStyle(color: string): CSSProperties {
   return { '--client-color': color } as CSSProperties
 }
@@ -149,7 +169,7 @@ function ClientAvatar({ initials, color, size = 'md' }: { initials: string; colo
   const dimension = size === 'sm' ? 'size-8 rounded-lg text-[0.65rem]' : size === 'lg' ? 'size-12 rounded-2xl text-sm' : 'size-11 rounded-xl text-xs'
   return (
     <div
-      className={cn('flex items-center justify-center bg-[var(--client-color)] font-extrabold text-white', dimension)}
+      className={cn('flex items-center justify-center bg-[var(--client-color)] font-extrabold', brandForeground(color), dimension)}
       style={clientStyle(color)}
     >
       {initials}
@@ -161,7 +181,7 @@ function MetricPill({ value, label, valueClass }: { value: string | number; labe
   return (
     <div className="flex flex-col items-end gap-0.5 text-right">
       <p className={cn('text-base font-extrabold tracking-tight', valueClass)}>{value}</p>
-      <p className="text-[0.65rem] text-background/50">{label}</p>
+      <p className="text-[0.65rem] text-muted-foreground">{label}</p>
     </div>
   )
 }
@@ -195,18 +215,28 @@ export default function ClientsPage() {
   const [allUsers, setAllUsers] = useState<UserSlim[]>([])
   const [draft, setDraft] = useState<Partial<ClientRow>>({})
   const [showAddClient, setShowAddClient] = useState(false)
+  const [showLimit, setShowLimit] = useState(false)
+  const [pageError, setPageError] = useState('')
+
+  const { org, loading: orgLoading } = useOrg()
+  const planLimits = org ? PLAN_LIMITS[org.plan as OrgPlan] : null
+  const clientCapReached = !orgLoading && !!planLimits && planLimits.maxClients !== -1 && clients.length >= planLimits.maxClients
 
   useEffect(() => {
     async function load() {
       const supabase = createClient()
       const [cliRes, invRes, cntRes, fbRes, teamRes, usrRes] = await Promise.all([
-        supabase.from('clients').select('id, name, industry, brand_color, platforms, requires_client_approval, initials, pending_approvals, monthly_retainer, contact_name, contact_email, contract_start, notes, content_this_month'),
+        supabase.from('clients').select('id, name, industry, brand_color, platforms, requires_client_approval, initials, pending_approvals, monthly_retainer, contact_name, contact_email, contract_start, notes, content_quota').order('name'),
         supabase.from('invoices').select('id, client_id, month, amount, status, due_date, paid_at, description').order('created_at', { ascending: false }),
         supabase.from('content_pieces').select('id, client_id, title, type, status, scheduled_date').order('scheduled_date'),
         supabase.from('feedback_comments').select('id, content_id, author_name, author_type, text, created_at, resolved, parent_id').order('created_at'),
         supabase.from('client_team').select('id, client_id, role, user_id'),
         supabase.from('users').select('id, name, role').neq('role', 'client'),
       ])
+
+      if (cliRes.error || invRes.error || cntRes.error || fbRes.error || teamRes.error || usrRes.error) {
+        setPageError('Could not load client data. Try refreshing the page.')
+      }
 
       setClients((cliRes.data || []) as ClientRow[])
       setInvoices((invRes.data || []) as InvoiceRow[])
@@ -232,7 +262,16 @@ export default function ClientsPage() {
     { dependencies: [mounted], scope: containerRef }
   )
 
-  if (!mounted) return null
+  if (!mounted) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-col gap-3.5 px-4 py-5" aria-busy="true" aria-label="Loading clients">
+        <Skeleton className="h-14 w-full rounded-2xl" />
+        <Skeleton className="h-32 w-full rounded-2xl" />
+        <Skeleton className="h-32 w-full rounded-2xl" />
+        <Skeleton className="h-32 w-full rounded-2xl" />
+      </div>
+    )
+  }
 
   const selected = selectedId ? clients.find(client => client.id === selectedId) ?? null : null
 
@@ -244,26 +283,45 @@ export default function ClientsPage() {
 
   async function markInvoicePaid(invId: string) {
     const now = new Date().toISOString()
+    setPageError('')
     setInvoices(prev => prev.map(invoice => (invoice.id === invId ? { ...invoice, status: 'paid', paid_at: now } : invoice)))
     const supabase = createClient()
-    await supabase.from('invoices').update({ status: 'paid', paid_at: now }).eq('id', invId)
+    const { data, error } = await supabase.from('invoices').update({ status: 'paid', paid_at: now }).eq('id', invId).select('id').single()
+    if (error || !data) {
+      setInvoices(prev => prev.map(invoice => (invoice.id === invId ? { ...invoice, status: 'pending', paid_at: null } : invoice)))
+      setPageError('Could not mark that invoice paid. Please try again.')
+    }
   }
 
   async function saveEdit() {
     if (!selected) return
+    const previous = selected
+    setPageError('')
     setClients(prev => prev.map(client => (client.id === selected.id ? { ...client, ...draft } : client)))
     setDraft({})
     setDetailTab('overview')
     const supabase = createClient()
-    await supabase.from('clients').update(draft).eq('id', selected.id)
+    const { data, error } = await supabase.from('clients').update(draft).eq('id', selected.id).select('id').single()
+    if (error || !data) {
+      setClients(prev => prev.map(client => (client.id === previous.id ? previous : client)))
+      setPageError('Could not save those changes. Please try again.')
+    }
   }
 
   async function saveTeamAssignment(clientId: string, role: string, userId: string | null) {
     const supabase = createClient()
+    setPageError('')
     if (userId) {
-      await supabase
+      const { data, error } = await supabase
         .from('client_team')
         .upsert({ client_id: clientId, role, user_id: userId, org_id: user?.org_id }, { onConflict: 'client_id,role' })
+        .select('id')
+        .single()
+
+      if (error || !data) {
+        setPageError('Could not save that assignment. Please try again.')
+        return
+      }
 
       setTeamRows(prev => {
         const filtered = prev.filter(row => !(row.client_id === clientId && row.role === role))
@@ -272,58 +330,71 @@ export default function ClientsPage() {
       return
     }
 
-    await supabase.from('client_team').delete().eq('client_id', clientId).eq('role', role)
+    const { error: deleteError } = await supabase.from('client_team').delete().eq('client_id', clientId).eq('role', role)
+    if (deleteError) {
+      setPageError('Could not remove that assignment. Please try again.')
+      return
+    }
     setTeamRows(prev => prev.filter(row => !(row.client_id === clientId && row.role === role)))
   }
 
   const totalContent = content.length
-  const totalPending = clients.reduce((sum, client) => sum + (client.pending_approvals || 0), 0)
+  const totalPending = content.filter(piece => needsClientAction(piece.status)).length
   const totalRevenue = invoices.filter(invoice => invoice.status === 'paid').reduce((sum, invoice) => sum + Number(invoice.amount), 0)
-  const overdueInv = invoices.filter(invoice => invoice.status === 'overdue').reduce((sum, invoice) => sum + Number(invoice.amount), 0)
+  const overdueInv = invoices.filter(invoice => effectiveInvoiceStatus(invoice) === 'overdue').reduce((sum, invoice) => sum + Number(invoice.amount), 0)
 
   return (
     <main className="page-main flex min-w-0 flex-1 overflow-hidden bg-background">
       <div className={cn('flex flex-1 overflow-hidden', selected && 'gap-5 px-4 py-4 md:px-5')}>
         <section
           className={cn(
-            'flex h-full flex-col overflow-hidden border-border bg-foreground text-background transition-all duration-300',
+            'flex h-full flex-col overflow-hidden border-border bg-card text-foreground transition-all duration-300',
             selected ? 'w-[320px] rounded-2xl border' : 'flex-1'
           )}
         >
-          <div className="flex flex-col gap-4 border-b border-white/8 px-5 py-5">
+          <div className="flex flex-col gap-4 border-b border-border px-5 py-5">
             <div className="flex items-start justify-between gap-4">
               <div className="flex flex-col gap-1">
-                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-background/50">Admin</p>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Admin</p>
                 <h1 className="text-2xl font-extrabold tracking-tight">Clients</h1>
               </div>
 
               <div className="flex flex-wrap items-center justify-end gap-3">
-                <MetricPill value={clients.length} label="clients" valueClass="text-sky" />
-                <Separator orientation="vertical" className="hidden h-7 bg-white/10 sm:block" />
+                <MetricPill value={clients.length} label="clients" valueClass="text-primary" />
+                <Separator orientation="vertical" className="hidden h-7 bg-foreground/10 sm:block" />
                 <MetricPill value={fmt(totalRevenue)} label="collected" valueClass="text-success" />
                 {overdueInv > 0 && (
                   <>
-                    <Separator orientation="vertical" className="hidden h-7 bg-white/10 sm:block" />
+                    <Separator orientation="vertical" className="hidden h-7 bg-foreground/10 sm:block" />
                     <MetricPill value={fmt(overdueInv)} label="overdue" valueClass="text-danger" />
                   </>
                 )}
-                <Button onClick={() => setShowAddClient(true)} className="bg-coral text-white hover:bg-coral/85">
+                <Button
+                  onClick={() => (clientCapReached ? setShowLimit(true) : setShowAddClient(true))}
+                  className="bg-primary text-primary-foreground hover:bg-primary/85"
+                >
                   Add Client
                 </Button>
               </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="border-white/10 bg-white/5 px-3 py-1 text-background/70">
+              <Badge variant="outline" className="border-border bg-foreground/5 px-3 py-1 text-muted-foreground">
                 {totalContent} pieces this month
               </Badge>
               {totalPending > 0 && (
-                <Badge variant="outline" className="border-coral/30 bg-coral/15 px-3 py-1 text-coral">
+                <Badge variant="outline" className="border-primary/30 bg-wash px-3 py-1 text-primary">
                   {totalPending} awaiting approval
                 </Badge>
               )}
             </div>
           </div>
+
+          {pageError && (
+            <div className="mx-4 mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs font-medium text-danger">
+              {pageError}
+            </div>
+          )}
 
           <div ref={containerRef} className={cn('flex-1 overflow-y-auto p-4', !selected && 'bg-background text-foreground')}>
             {!selected ? (
@@ -347,7 +418,8 @@ export default function ClientsPage() {
               <div className="flex flex-col gap-1.5">
                 {clients.map(client => {
                   const active = client.id === selectedId
-                  const hasOverdue = invoices.some(invoice => invoice.client_id === client.id && invoice.status === 'overdue')
+                  const hasOverdue = invoices.some(invoice => invoice.client_id === client.id && effectiveInvoiceStatus(invoice) === 'overdue')
+                  const pendingCount = content.filter(piece => piece.client_id === client.id && needsClientAction(piece.status)).length
 
                   return (
                     <button
@@ -357,16 +429,16 @@ export default function ClientsPage() {
                       onClick={() => selectClient(client.id)}
                       className={cn(
                         'flex items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors',
-                        active ? 'bg-white/10' : 'hover:bg-white/5'
+                        active ? 'bg-foreground/10' : 'hover:bg-foreground/5'
                       )}
                     >
                       <ClientAvatar initials={client.initials} color={client.brand_color} size="sm" />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-background">{client.name}</p>
-                        <p className="text-[0.7rem] text-background/55">{client.industry}</p>
+                        <p className="truncate text-sm font-semibold text-foreground">{client.name}</p>
+                        <p className="text-[0.7rem] text-muted-foreground">{client.industry}</p>
                       </div>
                       {hasOverdue && <div className="size-2 rounded-full bg-danger" />}
-                      {!hasOverdue && client.pending_approvals > 0 && <div className="size-2 rounded-full bg-lemon" />}
+                      {!hasOverdue && pendingCount > 0 && <div className="size-2 rounded-full bg-primary" />}
                     </button>
                   )
                 })}
@@ -398,6 +470,16 @@ export default function ClientsPage() {
         )}
       </div>
 
+      {planLimits && (
+        <PlanLimitDialog
+          open={showLimit}
+          onClose={() => setShowLimit(false)}
+          resource="clients"
+          plan={org!.plan as OrgPlan}
+          limit={planLimits.maxClients}
+        />
+      )}
+
       {showAddClient && (
         <AddClientModal
           onClose={() => setShowAddClient(false)}
@@ -405,8 +487,10 @@ export default function ClientsPage() {
             const supabase = createClient()
             supabase
               .from('clients')
-              .select('id, name, industry, brand_color, platforms, requires_client_approval, initials, pending_approvals, monthly_retainer, contact_name, contact_email, contract_start, notes, content_this_month')
-              .then(({ data }) => {
+              .select('id, name, industry, brand_color, platforms, requires_client_approval, initials, pending_approvals, monthly_retainer, contact_name, contact_email, contract_start, notes, content_quota')
+              .order('name')
+              .then(({ data, error }) => {
+                if (error) { setPageError('Client was created, but the list failed to refresh. Try reloading the page.'); return }
                 if (data) setClients(data as ClientRow[])
               })
           }}
@@ -431,10 +515,11 @@ function ClientOverviewCard({
 }) {
   const totalBilled = invoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0)
   const collected = invoices.filter(invoice => invoice.status === 'paid').reduce((sum, invoice) => sum + Number(invoice.amount), 0)
-  const hasOverdue = invoices.some(invoice => invoice.status === 'overdue')
+  const hasOverdue = invoices.some(invoice => effectiveInvoiceStatus(invoice) === 'overdue')
   const pct = totalBilled > 0 ? Math.round((collected / totalBilled) * 100) : 0
   const posted = content.filter(piece => piece.status === 'posted').length
   const upcoming = content.filter(piece => ['planned', 'brief-ready', 'in-design', 'in-editing'].includes(piece.status)).length
+  const pendingCount = content.filter(piece => needsClientAction(piece.status)).length
 
   return (
     <Card
@@ -459,9 +544,9 @@ function ClientOverviewCard({
                 Overdue
               </Badge>
             )}
-            {client.pending_approvals > 0 && (
-              <Badge variant="outline" className="border-coral/25 bg-coral/10 text-coral">
-                {client.pending_approvals} pending
+            {pendingCount > 0 && (
+              <Badge variant="outline" className="border-primary/30 bg-wash text-primary">
+                {pendingCount} pending
               </Badge>
             )}
           </div>
@@ -474,22 +559,22 @@ function ClientOverviewCard({
               {fmt(collected)} / {fmt(totalBilled)}
             </span>
           </div>
-          <div className="h-2 rounded-full bg-muted">
+          <div className="h-2 rounded-full bg-wash">
             <div
               className={cn(
                 'h-full w-[var(--fill-width)] rounded-full transition-[width] duration-700',
-                hasOverdue ? 'bg-danger' : 'bg-[var(--client-color)]'
+                hasOverdue ? 'bg-danger' : 'bg-primary'
               )}
-              style={{ ...clientStyle(client.brand_color), ...widthStyle(pct) }}
+              style={widthStyle(pct)}
             />
           </div>
         </div>
 
         <div className="grid grid-cols-4 gap-2">
           {[
-            { value: content.length, label: 'Total', shell: 'bg-sky-tint text-sky' },
-            { value: client.content_this_month, label: 'Quota', shell: 'bg-coral/10 text-coral' },
-            { value: upcoming, label: 'Upcoming', shell: 'bg-lemon-tint text-lemon' },
+            { value: content.length, label: 'Total', shell: 'bg-wash text-primary' },
+            { value: client.content_quota, label: 'Quota', shell: 'bg-secondary text-foreground' },
+            { value: upcoming, label: 'Upcoming', shell: 'bg-sage text-sage-ink' },
             { value: posted, label: 'Posted', shell: 'bg-success/10 text-success' },
           ].map(metric => (
             <div key={metric.label} className={cn('rounded-lg px-2 py-2 text-center', metric.shell)}>
@@ -502,9 +587,7 @@ function ClientOverviewCard({
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-wrap gap-1.5">
             {client.platforms.map(platform => (
-              <Badge key={platform} variant="outline" className="bg-muted/60 capitalize text-muted-foreground">
-                {platform}
-              </Badge>
+              <PlatformBadge key={platform} platform={platform} subtle />
             ))}
             {teamCount > 0 && (
               <Badge variant="outline" className="border-success/20 bg-success/10 text-success">
@@ -512,7 +595,7 @@ function ClientOverviewCard({
               </Badge>
             )}
           </div>
-          <span className="text-xs font-semibold text-[var(--client-color)]" style={clientStyle(client.brand_color)}>
+          <span className="text-xs font-semibold text-primary">
             Manage {'->'}
           </span>
         </div>
@@ -555,10 +638,10 @@ function ClientDetail({
   const [showLoginModal, setShowLoginModal] = useState(false)
   const totalBilled = invoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0)
   const collected = invoices.filter(invoice => invoice.status === 'paid').reduce((sum, invoice) => sum + Number(invoice.amount), 0)
-  const overdueAmt = invoices.filter(invoice => invoice.status === 'overdue').reduce((sum, invoice) => sum + Number(invoice.amount), 0)
+  const overdueAmt = invoices.filter(invoice => effectiveInvoiceStatus(invoice) === 'overdue').reduce((sum, invoice) => sum + Number(invoice.amount), 0)
   const openFeedback = feedback.filter(item => !item.resolved).length
   const teamCount = teamRows.length
-  const quotaPct = client.content_this_month > 0 ? Math.min((content.length / client.content_this_month) * 100, 100) : 0
+  const quotaPct = client.content_quota > 0 ? Math.min((content.length / client.content_quota) * 100, 100) : 0
 
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-background">
@@ -599,8 +682,7 @@ function ClientDetail({
               <TabsTrigger
                 key={item.key}
                 value={item.key}
-                className="rounded-none px-4 py-2 text-sm font-semibold text-muted-foreground data-active:text-[var(--client-color)] after:bg-[var(--client-color)]"
-                style={clientStyle(client.brand_color)}
+                className="rounded-none px-4 py-2 pointer-coarse:min-h-11 text-sm font-semibold text-muted-foreground data-active:text-primary after:bg-primary"
               >
                 {item.label}
               </TabsTrigger>
@@ -616,13 +698,13 @@ function ClientDetail({
                   {
                     label: 'Monthly Retainer',
                     value: client.monthly_retainer ? fmt(Number(client.monthly_retainer)) : '-',
-                    valueClass: 'text-[var(--client-color)]',
+                    valueClass: 'text-primary',
                   },
                   { label: 'Collected', value: fmt(collected), valueClass: 'text-success' },
                   {
                     label: 'Outstanding',
                     value: fmt(totalBilled - collected),
-                    valueClass: overdueAmt > 0 ? 'text-danger' : 'text-lemon',
+                    valueClass: overdueAmt > 0 ? 'text-danger' : 'text-foreground',
                   },
                 ].map(metric => (
                   <Card key={metric.label} size="sm">
@@ -632,7 +714,6 @@ function ClientDetail({
                       </p>
                       <p
                         className={cn('text-xl font-extrabold tracking-tight', metric.valueClass)}
-                        style={metric.valueClass.includes('var(') ? clientStyle(client.brand_color) : undefined}
                       >
                         {metric.value}
                       </p>
@@ -645,19 +726,19 @@ function ClientDetail({
                 <CardHeader className="gap-1">
                   <CardTitle>Monthly content quota</CardTitle>
                   <CardDescription>Pieces planned this month against the target for this client.</CardDescription>
-                  <CardAction className="text-xl font-extrabold text-[var(--client-color)]" style={clientStyle(client.brand_color)}>
-                    {content.length} / {client.content_this_month}
+                  <CardAction className="text-xl font-extrabold text-primary">
+                    {content.length} / {client.content_quota}
                   </CardAction>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">
-                  <div className="h-2 rounded-full bg-muted">
+                  <div className="h-2 rounded-full bg-wash">
                     <div
-                      className="h-full w-[var(--fill-width)] rounded-full bg-[var(--client-color)] transition-[width] duration-700"
-                      style={{ ...clientStyle(client.brand_color), ...widthStyle(quotaPct) }}
+                      className="h-full w-[var(--fill-width)] rounded-full bg-primary transition-[width] duration-700"
+                      style={widthStyle(quotaPct)}
                     />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    pieces planned this month · target: {client.content_this_month}
+                    pieces planned this month · target: {client.content_quota}
                   </p>
                 </CardContent>
               </Card>
@@ -705,7 +786,7 @@ function ClientDetail({
                       Create login credentials for the client to access their portal.
                     </p>
                   </div>
-                  <Button onClick={() => setShowLoginModal(true)} className="bg-coral text-white hover:bg-coral/85">
+                  <Button onClick={() => setShowLoginModal(true)} className="bg-primary text-primary-foreground hover:bg-primary/85">
                     Create Login
                   </Button>
                 </CardContent>
@@ -715,10 +796,10 @@ function ClientDetail({
 
           <TabsContent value="team" className="max-w-3xl">
             <div className="flex flex-col gap-4">
-              <Card className="border-sky/25 bg-sky-tint">
+              <Card className="border-border bg-wash">
                 <CardContent className="py-4">
-                  <p className="text-sm font-semibold text-sky">Assigned Team</p>
-                  <p className="text-sm text-sky/80">
+                  <p className="text-sm font-semibold text-primary">Assigned Team</p>
+                  <p className="text-sm text-muted-foreground">
                     These people will be auto-assigned tasks when new content is created for {client.name}.
                   </p>
                 </CardContent>
@@ -730,10 +811,10 @@ function ClientDetail({
                 const usersForRole = allUsers.filter(user => user.role === role)
 
                 return (
-                  <Card key={role} className={cn(assignedUser && 'border-[var(--client-color)]/30')} style={assignedUser ? clientStyle(client.brand_color) : undefined}>
+                  <Card key={role} className={cn(assignedUser && 'border-primary/30')}>
                     <CardContent className="flex flex-wrap items-center gap-4 py-5">
                       {assignedUser ? (
-                        <div className="rounded-xl border-2 border-[var(--client-color)] p-0.5" style={clientStyle(client.brand_color)}>
+                        <div className="rounded-xl border-2 border-primary p-0.5">
                           <UserAvatar userId={assignedUser.id} name={assignedUser.name} />
                         </div>
                       ) : (
@@ -777,12 +858,12 @@ function ClientDetail({
             <div className="flex flex-col gap-4">
               <div className="grid gap-3 md:grid-cols-3">
                 {[
-                  { label: 'Total Billed', value: fmt(totalBilled), valueClass: 'text-sky' },
+                  { label: 'Total Billed', value: fmt(totalBilled), valueClass: 'text-primary' },
                   { label: 'Collected', value: fmt(collected), valueClass: 'text-success' },
                   {
                     label: 'Outstanding',
                     value: fmt(totalBilled - collected),
-                    valueClass: overdueAmt > 0 ? 'text-danger' : 'text-lemon',
+                    valueClass: overdueAmt > 0 ? 'text-danger' : 'text-foreground',
                   },
                 ].map(metric => (
                   <Card key={metric.label} size="sm">
@@ -812,14 +893,15 @@ function ClientDetail({
                       </TableHeader>
                       <TableBody>
                         {invoices.map(invoice => {
-                          const badge = INVOICE_BADGE[invoice.status]
+                          const status = effectiveInvoiceStatus(invoice)
+                          const badge = INVOICE_BADGE[status]
                           return (
-                            <TableRow key={invoice.id} className={cn(invoice.status === 'overdue' && 'bg-danger/5 hover:bg-danger/10')}>
+                            <TableRow key={invoice.id} className={cn(status === 'overdue' && 'bg-danger/5 hover:bg-danger/10')}>
                               <TableCell className="font-semibold text-foreground">{invoice.month}</TableCell>
                               <TableCell className="max-w-72 truncate text-muted-foreground">{invoice.description}</TableCell>
                               <TableCell className="text-muted-foreground">Due {relDate(invoice.due_date)}</TableCell>
                               <TableCell>
-                                <StatusBadge status={badge.status}>{badge.label}</StatusBadge>
+                                <StatusBadge status={badge.status} dueSoon={badge.dueSoon}>{badge.label}</StatusBadge>
                               </TableCell>
                               <TableCell className="text-right text-sm font-extrabold text-foreground">
                                 {fmt(Number(invoice.amount))}
@@ -852,7 +934,7 @@ function ClientDetail({
                 {[...content].sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date)).map(piece => (
                   <Card key={piece.id} size="sm">
                     <CardContent className="flex items-center gap-3 py-4">
-                      <div className="size-2 rounded-full bg-[var(--client-color)]" style={clientStyle(client.brand_color)} />
+                      <div className="size-2 rounded-full bg-primary" />
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold text-foreground">{piece.title}</p>
                         <p className="text-xs capitalize text-muted-foreground">
@@ -877,7 +959,7 @@ function ClientDetail({
                   return (
                     <Card
                       key={item.id}
-                      className={cn(item.resolved ? 'opacity-80' : 'border-coral/35 bg-coral/5')}
+                      className={cn(item.resolved ? 'opacity-80' : 'border-primary/35 bg-wash')}
                     >
                       <CardContent className="flex flex-col gap-3 py-4">
                         <div className="flex flex-wrap items-center gap-2">
@@ -885,8 +967,8 @@ function ClientDetail({
                             variant="outline"
                             className={cn(
                               item.author_type === 'client'
-                                ? 'border-coral/25 bg-coral/10 text-coral'
-                                : 'border-sky/25 bg-sky-tint text-sky'
+                                ? 'border-primary/30 bg-wash text-primary'
+                                : 'border-border bg-secondary text-secondary-foreground'
                             )}
                           >
                             {item.author_type === 'client' ? 'Client' : 'Team'}
@@ -915,7 +997,7 @@ function ClientDetail({
                   { label: 'Contact Name', key: 'contact_name' as const, type: 'text' },
                   { label: 'Contact Email', key: 'contact_email' as const, type: 'email' },
                   { label: 'Monthly Retainer ($)', key: 'monthly_retainer' as const, type: 'number' },
-                  { label: 'Monthly Content Quota', key: 'content_this_month' as const, type: 'number' },
+                  { label: 'Monthly Content Quota', key: 'content_quota' as const, type: 'number' },
                 ].map(field => (
                   <FieldBlock key={field.key} label={field.label} htmlFor={field.key}>
                     <Input
@@ -943,7 +1025,7 @@ function ClientDetail({
                   />
                 </FieldBlock>
 
-                <Button onClick={onSaveEdit} className="w-fit bg-success text-white hover:bg-success/85">
+                <Button onClick={onSaveEdit} className="w-fit bg-success text-success-foreground hover:bg-success/85">
                   Save changes
                 </Button>
               </CardContent>

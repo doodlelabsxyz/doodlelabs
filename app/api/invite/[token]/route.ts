@@ -1,11 +1,15 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse, type NextRequest } from 'next/server'
+import { rateLimit, clientIp, tooMany } from '@/lib/rate-limit'
 
 // GET /api/invite/[token] — validate token and return public invite info
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
+  const rl = rateLimit(`invite-get:${clientIp(request)}`, 20, 10 * 60 * 1000)
+  if (!rl.ok) return tooMany(rl.retryAfter)
+
   const { token } = await params
   const supabase  = createAdminClient()
 

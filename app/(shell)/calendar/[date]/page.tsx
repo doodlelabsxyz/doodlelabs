@@ -7,19 +7,13 @@ import gsap from 'gsap'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import type { ContentType, ContentStatus } from '@/lib/types'
+import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { TypeIcon, StatusIcon } from '@/components/ui/type-icon'
+import { CONTENT_TYPE_STYLE } from '@/lib/color-map'
+import { isContentOverdue, isTaskOverdue } from '@/lib/overdue'
 
 gsap.registerPlugin(useGSAP)
-
-// Full Tailwind class strings — must be complete for JIT scanning
-const TYPE_CELL: Record<ContentType, {
-  bg: string; tint: string; text: string; label: string; strokeCls: string
-}> = {
-  graphic: { bg: 'bg-coral',    tint: 'bg-coral-tint',    text: 'text-white',     label: 'Graphic', strokeCls: 'stroke-coral'    },
-  video:   { bg: 'bg-lemon',    tint: 'bg-lemon-tint',    text: 'text-amber-900', label: 'Video',   strokeCls: 'stroke-lemon'    },
-  reel:    { bg: 'bg-mint',     tint: 'bg-mint-tint',     text: 'text-white',     label: 'Reel',    strokeCls: 'stroke-mint'     },
-  story:   { bg: 'bg-lavender', tint: 'bg-lavender-tint', text: 'text-white',     label: 'Story',   strokeCls: 'stroke-lavender' },
-}
 
 type ContentRow = {
   id: string; title: string; type: ContentType; status: ContentStatus
@@ -29,7 +23,7 @@ type ContentRow = {
 type ContentQueryRow = Omit<ContentRow, 'clients'> & {
   clients: ContentRow['clients'] | ContentRow['clients'][]
 }
-type TaskRow = { id: string; title: string; status: string; content_id: string }
+type TaskRow = { id: string; title: string; status: string; content_id: string; due_date: string }
 
 function dateToStr(dt: Date) {
   return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`
@@ -67,7 +61,7 @@ export default function DayViewPage() {
           .order('created_at'),
         supabase
           .from('tasks')
-          .select('id, title, status, content_id')
+          .select('id, title, status, content_id, due_date')
           .order('due_date'),
       ])
 
@@ -91,7 +85,16 @@ export default function DayViewPage() {
     )
   }, { dependencies: [mounted, dateStr], scope: listRef })
 
-  if (!mounted) return null
+  if (!mounted) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-col gap-3.5 px-4 py-5" aria-busy="true" aria-label="Loading day">
+        <Skeleton className="h-14 w-full rounded-2xl" />
+        <Skeleton className="h-28 w-full rounded-2xl" />
+        <Skeleton className="h-28 w-full rounded-2xl" />
+        <Skeleton className="h-28 w-full rounded-2xl" />
+      </div>
+    )
+  }
 
   return (
     <main className="page-main flex-1 min-w-0 overflow-y-auto flex flex-col">
@@ -130,13 +133,13 @@ export default function DayViewPage() {
         {/* Stats row */}
         <div className="flex gap-2 mt-3">
           <div className="px-3 py-[5px] rounded-full bg-white/[0.07] flex items-center gap-[6px]">
-            <span className="text-[0.875rem] font-extrabold text-coral">{content.length}</span>
+            <span className="text-[0.875rem] font-extrabold text-mint">{content.length}</span>
             <span className="text-[0.656rem] text-dark-muted">posts</span>
           </div>
-          {content.some(c => c.status === 'overdue') && (
+          {content.some(isContentOverdue) && (
             <div className="px-3 py-[5px] rounded-full bg-danger/15 flex items-center gap-[6px]">
               <span className="text-[0.875rem] font-extrabold text-danger">
-                {content.filter(c => c.status === 'overdue').length}
+                {content.filter(isContentOverdue).length}
               </span>
               <span className="text-[0.656rem] text-danger/70">overdue</span>
             </div>
@@ -148,16 +151,16 @@ export default function DayViewPage() {
       <div ref={listRef} className="p-4 flex-1">
         {content.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-[60px] px-5">
-            <div className="w-[72px] h-[72px] rounded-[18px] bg-island-2 border border-dashed border-border flex items-center justify-center">
+            <div className="w-[72px] h-[72px] rounded-[18px] bg-wash border border-dashed border-border flex items-center justify-center">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="opacity-30">
-                <rect x="3" y="5" width="18" height="17" rx="3" className="stroke-muted" strokeWidth="1.5"/>
-                <path d="M3 10h18M8 3v4M16 3v4" className="stroke-muted" strokeWidth="1.5" strokeLinecap="round"/>
+                <rect x="3" y="5" width="18" height="17" rx="3" className="stroke-muted-foreground" strokeWidth="1.5"/>
+                <path d="M3 10h18M8 3v4M16 3v4" className="stroke-muted-foreground" strokeWidth="1.5" strokeLinecap="round"/>
               </svg>
             </div>
-            <p className="text-[0.875rem] font-semibold text-muted">No content scheduled</p>
+            <p className="text-[0.875rem] font-semibold text-muted-foreground">No content scheduled</p>
             <button
               onClick={() => router.push(`/brief/new?date=${dateStr}`)}
-              className="px-5 py-[10px] rounded-[10px] bg-coral border-0 text-white font-bold text-[0.8rem] cursor-pointer shadow-[0_4px_12px_hsla(14,72%,62%,0.3)] hover:bg-coral/90 transition-colors"
+              className="px-5 py-[10px] rounded-[10px] bg-primary border-0 text-primary-foreground font-bold text-[0.8rem] cursor-pointer shadow-md hover:bg-primary/90 transition-colors"
             >
               + Create Content
             </button>
@@ -165,7 +168,7 @@ export default function DayViewPage() {
         ) : (
           <div className="flex flex-col gap-[10px]">
             {content.map(cp => {
-              const cfg     = TYPE_CELL[cp.type]
+              const cfg     = CONTENT_TYPE_STYLE[cp.type]
               const cpTasks = tasks.filter(t => t.content_id === cp.id)
 
               return (
@@ -174,21 +177,18 @@ export default function DayViewPage() {
                   data-animate="day-card"
                   onClick={() => router.push(`/brief/${cp.id}`)}
                   className={cn(
-                    "bg-island rounded-2xl border overflow-hidden cursor-pointer",
+                    "bg-card rounded-2xl border border-border overflow-hidden cursor-pointer",
                     "transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
-                    "hover:-translate-y-[3px] hover:shadow-[0_12px_32px_rgba(0,0,0,0.08)]"
+                    "hover:-translate-y-[3px] hover:shadow-md"
                   )}
                 >
-                  {/* Type accent bar */}
-                  <div className={cn("h-1", cfg.bg)} />
-
                   <div className="p-4">
                     {/* Title row */}
                     <div className="flex items-start justify-between gap-3 mb-[10px]">
                       <div className="flex-1 min-w-0">
-                        <p className="text-[0.95rem] font-extrabold text-ink leading-[1.3]">{cp.title}</p>
+                        <p className="text-[0.95rem] font-extrabold text-foreground leading-[1.3]">{cp.title}</p>
                         {cp.clients && (
-                          <p className="text-[0.75rem] text-muted mt-[3px]">
+                          <p className="text-[0.75rem] text-muted-foreground mt-[3px]">
                             {cp.clients.name} · {cp.clients.industry}
                           </p>
                         )}
@@ -200,19 +200,20 @@ export default function DayViewPage() {
 
                     {/* Caption preview */}
                     {cp.caption && (
-                      <p className="text-[0.8rem] text-muted leading-[1.5] mb-3 line-clamp-2">
+                      <p className="text-[0.8rem] text-muted-foreground leading-[1.5] mb-3 line-clamp-2">
                         {cp.caption}
                       </p>
                     )}
 
                     {/* Tags row */}
                     <div className="flex items-center gap-[10px] flex-wrap">
-                      <span className={cn("px-2 py-[3px] rounded-[6px] text-[0.656rem] font-bold", cfg.bg, cfg.text)}>
+                      <span className={cn("inline-flex items-center gap-1 px-2 py-[3px] rounded-[6px] text-[0.656rem] font-bold", cfg.className)}>
+                        <TypeIcon name={cfg.icon} className="size-2.5" />
                         {cfg.label}
                       </span>
                       <div className="flex gap-1">
                         {cp.platforms.map(p => (
-                          <span key={p} className="px-2 py-[3px] rounded-[6px] bg-island-2 text-[0.656rem] font-semibold text-muted capitalize">
+                          <span key={p} className="px-2 py-[3px] rounded-[6px] bg-wash text-[0.656rem] font-semibold text-muted-foreground capitalize">
                             {p}
                           </span>
                         ))}
@@ -222,41 +223,43 @@ export default function DayViewPage() {
                     {/* Tasks */}
                     {cpTasks.length > 0 && (
                       <div className="mt-3 border-t border-border pt-[10px]">
-                        <p className="text-[0.656rem] font-bold text-muted mb-[6px]">
+                        <p className="text-[0.656rem] font-bold text-muted-foreground mb-[6px]">
                           Tasks ({cpTasks.length})
                         </p>
                         <div className="flex flex-col gap-1">
-                          {cpTasks.map(t => (
+                          {cpTasks.map(t => {
+                            const overdue = isTaskOverdue(t)
+                            return (
                             <div key={t.id} className="flex items-center gap-2">
                               {/* Checkbox */}
                               <div className={cn(
                                 "w-[14px] h-[14px] rounded-[4px] border-[1.5px] flex items-center justify-center shrink-0",
                                 t.status === 'done'
                                   ? "border-success bg-success"
-                                  : t.status === 'overdue'
+                                  : overdue
                                     ? "border-danger bg-transparent"
                                     : "border-border bg-transparent"
                               )}>
                                 {t.status === 'done' && (
-                                  <svg width="8" height="8" viewBox="0 0 12 12" fill="none">
-                                    <path d="M3 6l2 2 4-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                  </svg>
+                                  <StatusIcon name="check" className="size-2 text-success-foreground" />
                                 )}
                               </div>
                               <span className={cn(
-                                "text-[0.75rem] text-muted flex-1",
+                                "text-[0.75rem] text-muted-foreground flex-1",
                                 t.status === 'done' && "line-through"
                               )}>
                                 {t.title}
                               </span>
                               <span className={cn(
-                                "text-[0.6rem] font-semibold capitalize",
-                                t.status === 'overdue' ? "text-danger" : "text-ghost"
+                                "inline-flex items-center gap-0.5 text-[0.6rem] font-semibold capitalize",
+                                overdue ? "text-danger" : "text-muted-foreground"
                               )}>
-                                {t.status.replace('-', ' ')}
+                                {overdue && <StatusIcon name="bang" className="size-2.5" />}
+                                {overdue ? 'overdue' : t.status.replace('-', ' ')}
                               </span>
                             </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       </div>
                     )}
@@ -268,9 +271,9 @@ export default function DayViewPage() {
             {/* Add more button */}
             <button
               onClick={() => router.push(`/brief/new?date=${dateStr}`)}
-              className="p-[14px] rounded-xl border border-dashed border-coral/40 bg-coral/[0.04] cursor-pointer flex items-center justify-center gap-2 mt-1 hover:bg-coral/[0.07] transition-colors"
+              className="p-[14px] rounded-xl border border-dashed border-primary/40 bg-primary/[0.04] cursor-pointer flex items-center justify-center gap-2 mt-1 hover:bg-primary/[0.07] transition-colors"
             >
-              <span className="text-[0.85rem] font-semibold text-coral">+ Add Content</span>
+              <span className="text-[0.85rem] font-semibold text-primary">+ Add Content</span>
             </button>
           </div>
         )}

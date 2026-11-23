@@ -15,10 +15,10 @@ export function FilterPill({
   return (
     <button
       className={cn(
-        "inline-flex items-center rounded-full border px-s2 py-[5px] text-[0.72rem] font-semibold transition-colors",
+        "relative inline-flex min-h-9 items-center rounded-full border px-s2 py-[5px] text-[0.72rem] font-semibold transition-colors before:absolute before:-inset-1 before:content-[''] pointer-coarse:min-h-11 pointer-coarse:before:hidden",
         active
-          ? "border-brand bg-brand text-cream shadow-sm"
-          : "border-border bg-surface text-muted hover:bg-cream",
+          ? "border-primary bg-primary text-primary-foreground shadow-sm"
+          : "border-border bg-surface text-muted hover:bg-wash",
         className
       )}
       {...props}

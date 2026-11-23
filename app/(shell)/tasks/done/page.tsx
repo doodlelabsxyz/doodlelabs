@@ -8,18 +8,14 @@ import gsap from 'gsap'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { CONTENT_TYPE_STYLE } from '@/lib/color-map'
+import { TypeIcon } from '@/components/ui/type-icon'
 import { createClient } from '@/lib/supabase/client'
 import type { ContentType } from '@/lib/types'
 
 gsap.registerPlugin(useGSAP)
-
-const TYPE_CFG: Record<ContentType, { label: string; badgeClass: string }> = {
-  graphic: { label: 'Graphic', badgeClass: 'bg-coral/15 text-coral' },
-  video: { label: 'Video', badgeClass: 'bg-lemon/20 text-amber-700' },
-  reel: { label: 'Reel', badgeClass: 'bg-mint/15 text-mint' },
-  story: { label: 'Story', badgeClass: 'bg-lavender/15 text-lavender' },
-}
 
 type TaskRow = {
   id: string
@@ -88,7 +84,21 @@ export default function DoneTasksPage() {
     )
   }, { dependencies: [mounted], scope: listRef })
 
-  if (!mounted) return null
+  if (!mounted) {
+    return (
+      <main aria-busy="true" aria-label="Loading completed tasks" className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">
+        <section className="border-b border-white/4 bg-dark px-5 pt-[18px] pb-4">
+          <Skeleton className="mb-2 h-2.5 w-14 bg-white/10" />
+          <Skeleton className="h-5 w-32 bg-white/10" />
+        </section>
+        <div className="flex-1 space-y-3 p-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 w-full rounded-xl" />
+          ))}
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">
@@ -126,7 +136,7 @@ export default function DoneTasksPage() {
         {tasks.length > 0 && (
           <Card className="mb-4 border border-success/25 bg-success/10 shadow-none">
             <CardContent className="flex items-center gap-3 py-4">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-success text-xl text-white">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-success text-xl text-success-foreground">
                 ✓
               </div>
               <div>
@@ -143,7 +153,7 @@ export default function DoneTasksPage() {
           {tasks.map(task => {
             const cp = task.content_pieces
             const client = task.clients
-            const tc = cp ? TYPE_CFG[cp.type] : TYPE_CFG.graphic
+            const tc = cp ? CONTENT_TYPE_STYLE[cp.type] : CONTENT_TYPE_STYLE.graphic
 
             return (
               <Card
@@ -156,7 +166,7 @@ export default function DoneTasksPage() {
                 )}
               >
                 <CardContent className="flex items-center gap-3 py-4">
-                  <div className="flex size-[26px] shrink-0 items-center justify-center rounded-full border border-success/50 bg-success/10 text-[0.75rem] font-extrabold text-success">
+                  <div className="flex size-[26px] shrink-0 items-center justify-center rounded-full border border-success/50 bg-status-done text-[0.75rem] font-extrabold text-status-done-fg">
                     ✓
                   </div>
 
@@ -175,7 +185,8 @@ export default function DoneTasksPage() {
                         </div>
                       )}
                       {cp && (
-                        <Badge className={cn('border-0 text-[0.58rem] font-bold', tc.badgeClass)}>
+                        <Badge className={cn('gap-1 text-[0.58rem] font-bold', tc.className)}>
+                          <TypeIcon name={tc.icon} className="size-2" />
                           {tc.label}
                         </Badge>
                       )}

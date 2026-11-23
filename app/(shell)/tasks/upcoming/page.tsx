@@ -8,18 +8,14 @@ import gsap from 'gsap'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { CONTENT_TYPE_STYLE } from '@/lib/color-map'
+import { TypeIcon } from '@/components/ui/type-icon'
 import { createClient } from '@/lib/supabase/client'
 import type { ContentType } from '@/lib/types'
 
 gsap.registerPlugin(useGSAP)
-
-const TYPE_CFG: Record<ContentType, { label: string; badgeClass: string; dotClass: string }> = {
-  graphic: { label: 'Graphic', badgeClass: 'bg-coral/15 text-coral', dotClass: 'bg-coral' },
-  video: { label: 'Video', badgeClass: 'bg-lemon/20 text-amber-700', dotClass: 'bg-lemon' },
-  reel: { label: 'Reel', badgeClass: 'bg-mint/15 text-mint', dotClass: 'bg-mint' },
-  story: { label: 'Story', badgeClass: 'bg-lavender/15 text-lavender', dotClass: 'bg-lavender' },
-}
 
 function relDate(dateStr: string) {
   const d = new Date(`${dateStr}T00:00:00`)
@@ -91,7 +87,6 @@ export default function UpcomingTasksPage() {
         .select('id, title, description, due_date, status, content_pieces(id, title, type), clients(id, name, brand_color)')
         .gt('due_date', todayStr)
         .neq('status', 'done')
-        .neq('status', 'overdue')
         .order('due_date')
 
       if (!isAdmin) {
@@ -121,7 +116,22 @@ export default function UpcomingTasksPage() {
     )
   }, { dependencies: [mounted], scope: listRef })
 
-  if (!mounted) return null
+  if (!mounted) {
+    return (
+      <main aria-busy="true" aria-label="Loading upcoming tasks" className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">
+        <section className="border-b border-white/4 bg-dark px-5 pt-[18px] pb-4">
+          <Skeleton className="mb-2 h-2.5 w-14 bg-white/10" />
+          <Skeleton className="h-5 w-32 bg-white/10" />
+        </section>
+        <div className="flex-1 space-y-3 p-4">
+          <Skeleton className="h-4 w-40" />
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 w-full rounded-xl" />
+          ))}
+        </div>
+      </main>
+    )
+  }
 
   const grouped = groupByDay(tasks)
 
@@ -141,7 +151,7 @@ export default function UpcomingTasksPage() {
             <p className="text-[0.6rem] uppercase tracking-[0.08em] text-dark-muted">Tasks</p>
             <h1 className="text-md font-extrabold leading-none text-dark-text">Upcoming</h1>
           </div>
-          <Badge className="ml-auto border-0 bg-sky/25 px-3 py-1 text-xs font-extrabold text-sky">
+          <Badge className="ml-auto border-0 bg-mint px-3 py-1 text-xs font-extrabold text-dark">
             {tasks.length} tasks
           </Badge>
         </div>
@@ -172,7 +182,7 @@ export default function UpcomingTasksPage() {
               {dayTasks.map(task => {
                 const cp = task.content_pieces
                 const client = task.clients
-                const tc = cp ? TYPE_CFG[cp.type] : TYPE_CFG.graphic
+                const tc = cp ? CONTENT_TYPE_STYLE[cp.type] : CONTENT_TYPE_STYLE.graphic
 
                 return (
                   <Card
@@ -185,7 +195,7 @@ export default function UpcomingTasksPage() {
                     )}
                   >
                     <CardContent className="flex items-start gap-3 py-4">
-                      <div className={cn('mt-1 size-2 shrink-0 rounded-full', tc.dotClass)} />
+                      <TypeIcon name={tc.icon} className="mt-1 size-2.5 text-primary" />
 
                       <div className="min-w-0 flex-1">
                         <p className="mb-1 text-sm font-bold leading-5 text-foreground">
@@ -205,7 +215,8 @@ export default function UpcomingTasksPage() {
                             </div>
                           )}
                           {cp && (
-                            <Badge className={cn('border-0 text-[0.58rem] font-bold', tc.badgeClass)}>
+                            <Badge className={cn('gap-1 text-[0.58rem] font-bold', tc.className)}>
+                              <TypeIcon name={tc.icon} className="size-2" />
                               {tc.label}
                             </Badge>
                           )}
@@ -213,7 +224,7 @@ export default function UpcomingTasksPage() {
                       </div>
 
                       {cp && (
-                        <span className="shrink-0 text-[0.62rem] font-bold text-sky">
+                        <span className="shrink-0 text-[0.62rem] font-bold text-primary">
                           Brief →
                         </span>
                       )}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
@@ -10,20 +11,16 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
+import { useUser } from '@/lib/supabase/useUser'
 import type { ContentType } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { TypeIcon } from '@/components/ui/type-icon'
+import { CONTENT_TYPE_STYLE } from '@/lib/color-map'
 
 gsap.registerPlugin(useGSAP)
 
-type ClientRow = { id: string; name: string; initials: string; brand_color: string; content_this_month: number }
+type ClientRow = { id: string; name: string; initials: string; brand_color: string; content_quota: number }
 type ContentRow = { id: string; title: string; type: string; status: string; client_id: string; scheduled_date: string }
-
-const TYPE_CFG: Record<ContentType, { bg: string; text: string; label: string; chip: string }> = {
-  graphic: { bg: 'hsl(14 72% 62%)', text: '#fff', label: 'Graphic', chip: 'bg-coral/12 text-coral' },
-  video: { bg: 'hsl(40 95% 62%)', text: '#3a2800', label: 'Video', chip: 'bg-lemon/20 text-foreground' },
-  reel: { bg: 'hsl(161 58% 50%)', text: '#fff', label: 'Reel', chip: 'bg-mint/12 text-mint' },
-  story: { bg: 'hsl(268 60% 68%)', text: '#fff', label: 'Story', chip: 'bg-lavender/14 text-lavender' },
-}
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
@@ -57,6 +54,8 @@ function styleVars(vars: Record<string, string | number>): CSSProperties {
 export default function PlanningPage() {
   const router = useRouter()
   const supabase = createClient()
+  const { user } = useUser()
+  const canCreate = user?.role === 'admin'
   const today = new Date()
   const quotaRef = useRef<HTMLDivElement>(null)
 
@@ -69,19 +68,21 @@ export default function PlanningPage() {
   const [addClient, setAddClient] = useState('')
   const [addType, setAddType] = useState<ContentType>('graphic')
   const [addTitle, setAddTitle] = useState('')
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
     supabase
       .from('clients')
-      .select('id, name, initials, brand_color, content_this_month')
+      .select('id, name, initials, brand_color, content_quota')
       .order('name')
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) { setLoadError('Could not load clients. Try refreshing the page.'); return }
         if (data) {
           setClients(data)
-          if (data[0] && !addClient) setAddClient(data[0].id)
+          setAddClient(prev => prev || data[0]?.id || '')
         }
       })
-  }, [addClient, supabase])
+  }, [supabase])
 
   useEffect(() => {
     const { start, end } = monthRange(viewYear, viewMonth)
@@ -90,7 +91,8 @@ export default function PlanningPage() {
       .select('id, title, type, status, client_id, scheduled_date')
       .gte('scheduled_date', start)
       .lte('scheduled_date', end)
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) { setLoadError('Could not load this month\'s content. Try refreshing the page.'); return }
         if (data) setContentPieces(data)
       })
   }, [supabase, viewYear, viewMonth])
@@ -115,7 +117,7 @@ export default function PlanningPage() {
     monthContent.forEach(c => {
       byType[c.type as ContentType]++
     })
-    return { client, target: client.content_this_month, planned: monthContent.length, byType }
+    return { client, target: client.content_quota, planned: monthContent.length, byType }
   })
 
   const contentByDay = new Map<number, ContentRow[]>()
@@ -154,30 +156,36 @@ export default function PlanningPage() {
 
   return (
     <main className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">
-      <div className="bg-foreground px-5 py-[18px] pb-4 text-background">
+      <div className="bg-dark px-5 py-[18px] pb-4 text-dark-text">
         <div className="flex items-center gap-3">
           <div className="flex-1">
-            <p className="mb-px text-[0.656rem] uppercase tracking-[0.08em] text-background/50">Content</p>
+            <p className="mb-px text-[0.656rem] uppercase tracking-[0.08em] text-dark-muted">Content</p>
             <h1 className="text-[1.167rem] font-extrabold leading-none">Planning</h1>
           </div>
 
           <div className="flex items-center gap-3">
             <ProgressRing value={totalPlanned} total={totalTarget} />
             <div>
-              <p className="text-base font-extrabold leading-none text-coral">{totalPlanned}/{totalTarget}</p>
-              <p className="mt-0.5 text-[0.6rem] text-background/50">posts planned</p>
+              <p className="text-base font-extrabold leading-none text-mint">{totalPlanned}/{totalTarget}</p>
+              <p className="mt-0.5 text-[0.6rem] text-dark-muted">posts planned</p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
             <NavBtn onClick={() => navigate(-1)}>‹</NavBtn>
-            <span className="min-w-25 text-center text-[0.8rem] font-bold text-background">
+            <span className="min-w-25 text-center text-[0.8rem] font-bold text-dark-text">
               {MONTHS[viewMonth].slice(0, 3)} {viewYear}
             </span>
             <NavBtn onClick={() => navigate(1)}>›</NavBtn>
           </div>
         </div>
       </div>
+
+      {loadError && (
+        <div className="mx-4 mt-4 rounded-lg border border-danger/20 bg-danger/5 px-4 py-3 text-sm font-medium text-danger">
+          {loadError}
+        </div>
+      )}
 
       <div className="flex flex-1 flex-col md:flex-row">
         <div
@@ -194,12 +202,12 @@ export default function PlanningPage() {
                 <Card
                   key={client.id}
                   data-animate="quota-card"
-                  className={cn('bg-amber-50/40 py-0 shadow-none', isFull ? 'border-success/30' : 'border-border')}
-                  style={styleVars({ '--client-color': client.brand_color, '--quota-width': `${Math.min(pct, 100)}%` })}
+                  className={cn('bg-card py-0 shadow-none', isFull ? 'border-success/30' : 'border-border')}
+                  style={styleVars({ '--quota-width': `${Math.min(pct, 100)}%` })}
                 >
                   <CardContent className="px-3.5 py-3.5">
                     <div className="mb-2.5 flex items-center gap-2.5">
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[var(--client-color)] text-[11px] font-extrabold text-white">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-[11px] font-extrabold text-primary-foreground">
                         {client.initials}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -210,13 +218,13 @@ export default function PlanningPage() {
                     </div>
 
                     <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div className={cn('h-full w-[var(--quota-width)] rounded-full transition-[width] duration-500', isFull ? 'bg-success' : 'bg-[var(--client-color)]')} />
+                      <div className={cn('h-full w-[var(--quota-width)] rounded-full transition-[width] duration-500', isFull ? 'bg-success' : 'bg-primary')} />
                     </div>
 
                     <div className="flex flex-wrap gap-1.5">
                       {(Object.entries(byType) as [ContentType, number][]).map(([t, n]) => (
-                        <span key={t} className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6rem] font-semibold', n > 0 ? TYPE_CFG[t].chip : 'bg-muted text-muted-foreground')}>
-                          <span className="size-1.5 rounded-[2px] bg-[color:var(--type-color)]" style={styleVars({ '--type-color': TYPE_CFG[t].bg })} />
+                        <span key={t} title={CONTENT_TYPE_STYLE[t].label} className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6rem] font-semibold', n > 0 ? CONTENT_TYPE_STYLE[t].className : 'border border-border bg-muted text-muted-foreground')}>
+                          <TypeIcon name={CONTENT_TYPE_STYLE[t].icon} className="size-2.5" />
                           {n}
                         </span>
                       ))}
@@ -252,18 +260,18 @@ export default function PlanningPage() {
                     key={i}
                     onClick={() => selectDay(cell.day)}
                     className={cn(
-                      'flex aspect-square max-h-10 flex-col items-center justify-center gap-0.5 rounded-lg border-2 bg-amber-50/40 transition-colors',
-                      isSelected ? 'border-coral bg-coral/10' : isToday ? 'border-sky' : 'border-transparent',
+                      'flex aspect-square max-h-10 flex-col items-center justify-center gap-0.5 rounded-lg border-2 bg-card transition-colors',
+                      isSelected ? 'border-primary bg-primary/10' : isToday ? 'border-primary' : 'border-transparent',
                       isPast && 'opacity-45'
                     )}
                   >
-                    <span className={cn('text-[0.7rem] leading-none', isSelected || isToday ? 'font-extrabold' : 'font-medium', isSelected ? 'text-coral' : isToday ? 'text-sky' : 'text-foreground')}>
+                    <span className={cn('text-[0.7rem] leading-none', isSelected || isToday ? 'font-extrabold' : 'font-medium', isSelected ? 'text-primary' : isToday ? 'text-primary' : 'text-foreground')}>
                       {cell.day}
                     </span>
                     {dayPieces.length > 0 && (
                       <div className="flex gap-0.5">
                         {dayPieces.slice(0, 3).map((cp, j) => (
-                          <div key={j} className="size-1 rounded-full bg-[color:var(--dot-color)]" style={styleVars({ '--dot-color': TYPE_CFG[cp.type as ContentType]?.bg ?? 'hsl(24 10% 60%)' })} />
+                          <TypeIcon key={j} name={(CONTENT_TYPE_STYLE[cp.type as ContentType] ?? CONTENT_TYPE_STYLE.graphic).icon} className="size-2 text-primary" />
                         ))}
                       </div>
                     )}
@@ -294,15 +302,16 @@ export default function PlanningPage() {
                   <div className="mb-3 flex flex-col gap-1.5">
                     {dayContent.map(cp => {
                       const client = clients.find(c => c.id === cp.client_id)
-                      const cfg = TYPE_CFG[cp.type as ContentType] ?? TYPE_CFG.graphic
+                      const cfg = CONTENT_TYPE_STYLE[cp.type as ContentType] ?? CONTENT_TYPE_STYLE.graphic
                       return (
                         <button
                           key={cp.id}
                           onClick={() => goToBrief(cp.id)}
-                          className="flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-transform hover:translate-x-1"
-                          style={styleVars({ '--type-color': cfg.bg })}
+                          className="flex items-center gap-2.5 rounded-xl border border-border px-3 py-2.5 text-left transition-transform hover:translate-x-1"
                         >
-                          <div className="size-2 shrink-0 rounded-[2px] bg-[var(--type-color)]" />
+                          <span className={cn('flex size-5 shrink-0 items-center justify-center rounded-md', cfg.className)}>
+                            <TypeIcon name={cfg.icon} className="size-3" />
+                          </span>
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-[0.8rem] font-semibold leading-tight text-foreground">{cp.title}</p>
                             <p className="text-[0.656rem] text-muted-foreground">{client?.name} · {cfg.label}</p>
@@ -316,12 +325,12 @@ export default function PlanningPage() {
                   </div>
                 )}
 
-                {!showAddForm ? (
+                {!canCreate ? null : !showAddForm ? (
                   <button
                     onClick={() => setShowAddForm(true)}
-                    className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-coral/40 bg-coral/5 px-3 py-3 text-coral transition-colors hover:bg-coral/10"
+                    className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-3 py-3 text-primary transition-colors hover:bg-primary/10"
                   >
-                    <span className="flex size-5 items-center justify-center rounded-full bg-coral text-sm font-bold text-white">+</span>
+                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">+</span>
                     <span className="text-[0.8rem] font-semibold">Add Content</span>
                   </button>
                 ) : (
@@ -329,36 +338,45 @@ export default function PlanningPage() {
                     <CardContent className="flex flex-col gap-3 px-3.5 py-3.5">
                       <div>
                         <p className="mb-1.5 text-[0.7rem] font-bold text-foreground">Client</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {clients.map(c => (
-                            <button
-                              key={c.id}
-                              onClick={() => setAddClient(c.id)}
-                              className={cn(
-                                'rounded-full px-2.5 py-1 text-[0.7rem] font-semibold transition-colors',
-                                addClient === c.id ? 'text-white' : 'bg-card text-foreground'
-                              )}
-                              style={addClient === c.id ? styleVars({ '--client-color': c.brand_color, background: 'var(--client-color)' }) : undefined}
-                            >
-                              {c.name}
-                            </button>
-                          ))}
-                        </div>
+                        {clients.length === 0 ? (
+                          <p className="text-[0.7rem] text-muted-foreground">
+                            No clients yet —{' '}
+                            <Link href="/clients" className="font-semibold text-primary hover:underline">
+                              add one first
+                            </Link>
+                            .
+                          </p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {clients.map(c => (
+                              <button
+                                key={c.id}
+                                onClick={() => setAddClient(c.id)}
+                                className={cn(
+                                  'rounded-full px-2.5 py-1 text-[0.7rem] font-semibold transition-colors',
+                                  addClient === c.id ? 'bg-primary text-primary-foreground' : 'border border-border bg-card text-foreground'
+                                )}
+                              >
+                                {c.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       <div>
                         <p className="mb-1.5 text-[0.7rem] font-bold text-foreground">Type</p>
                         <div className="flex gap-1.5">
-                          {(Object.entries(TYPE_CFG) as [ContentType, (typeof TYPE_CFG)[ContentType]][]).map(([t, cfg]) => (
+                          {(Object.entries(CONTENT_TYPE_STYLE) as [ContentType, (typeof CONTENT_TYPE_STYLE)[ContentType]][]).map(([t, cfg]) => (
                             <button
                               key={t}
                               onClick={() => setAddType(t)}
                               className={cn(
-                                'rounded-lg px-2.5 py-1 text-[0.7rem] font-bold transition-colors',
-                                addType === t ? '' : 'bg-card text-foreground'
+                                'inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[0.7rem] font-bold transition-colors',
+                                addType === t ? cfg.className : 'border border-border bg-card text-foreground'
                               )}
-                              style={addType === t ? { background: cfg.bg, color: cfg.text } : undefined}
                             >
+                              <TypeIcon name={cfg.icon} className="size-3" />
                               {cfg.label}
                             </button>
                           ))}
@@ -379,7 +397,11 @@ export default function PlanningPage() {
                         <Button variant="outline" className="flex-1" onClick={() => { setShowAddForm(false); setAddTitle('') }}>
                           Cancel
                         </Button>
-                        <Button className="flex-[2] bg-coral text-white hover:bg-coral/85" onClick={() => goToBrief()}>
+                        <Button
+                          className="flex-[2] bg-primary text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
+                          disabled={clients.length === 0}
+                          onClick={() => goToBrief()}
+                        >
                           Create Brief
                         </Button>
                       </div>
@@ -413,13 +435,13 @@ function ProgressRing({ value, total }: { value: number; total: number }) {
   const dash = pct * circ
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" className="stroke-white/10" strokeWidth="4" />
       <circle
         cx={size / 2}
         cy={size / 2}
         r={r}
         fill="none"
-        stroke="hsl(25 82% 60%)"
+        className="stroke-mint"
         strokeWidth="4"
         strokeDasharray={`${dash} ${circ}`}
         strokeLinecap="round"
@@ -434,7 +456,7 @@ function NavBtn({ onClick, children }: { onClick: () => void; children: React.Re
   return (
     <button
       onClick={onClick}
-      className="flex size-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-base text-background transition-colors hover:bg-white/10"
+      className="flex size-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-base text-dark-text transition-colors hover:bg-white/10"
     >
       {children}
     </button>

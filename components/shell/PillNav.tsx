@@ -16,10 +16,10 @@ gsap.registerPlugin(useGSAP)
 function LogoMark() {
   return (
     <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true" className="shrink-0">
-      <rect width="30" height="30" rx="9" fill="var(--color-brand)" />
+      <rect width="30" height="30" rx="9" fill="var(--color-primary)" />
       <path
         d="M9 22 L15 8 L21 22 M11.5 17.5 H18.5"
-        stroke="hsl(42, 30%, 99%)"
+        stroke="var(--color-primary-foreground)"
         strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -30,8 +30,11 @@ function LogoMark() {
 
 // ─── Nav icons ────────────────────────────────────────────────────────────────
 
-function NavIcon({ name, active }: { name: NavItem['icon']; active: boolean }) {
-  const col = active ? 'var(--color-cream)' : 'var(--color-dark-muted)'
+function NavIcon({ name, active, tone = 'surface' }: { name: NavItem['icon']; active: boolean; tone?: 'surface' | 'dark' }) {
+  const col = 'currentColor'
+  const toneCls = tone === 'dark'
+    ? (active ? 'text-sidebar-primary-foreground' : 'text-dark-muted')
+    : (active ? 'text-primary-foreground' : 'text-muted')
 
   const map: Record<NavItem['icon'], React.ReactElement> = {
     home: (
@@ -133,8 +136,15 @@ function NavIcon({ name, active }: { name: NavItem['icon']; active: boolean }) {
         <path d="M18 20V10M12 20V4M6 20v-6" stroke={col} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     ),
+    assets: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="3" stroke={col} strokeWidth="1.9"/>
+        <circle cx="8.5" cy="8.5" r="1.5" fill={col}/>
+        <path d="M21 15l-5-5L5 21" stroke={col} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
   }
-  return map[name] ?? null
+  return <span className={`inline-flex ${toneCls}`}>{map[name] ?? null}</span>
 }
 
 // ─── Mobile More Drawer ───────────────────────────────────────────────────────
@@ -156,16 +166,16 @@ function MoreDrawer({ items, onClose }: { items: NavItem[]; onClose: () => void 
 
   return (
     <div className="fixed inset-0 z-[100]">
-      <div ref={backdropRef} onClick={close} className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
+      <div ref={backdropRef} onClick={close} className="absolute inset-0 bg-foreground/50 backdrop-blur-sm" />
       <div
         ref={sheetRef}
-        className="absolute bottom-0 left-0 right-0 bg-dark border border-white/[0.07] border-b-0 rounded-t-[20px] px-3 pb-8 pt-2 shadow-2xl"
+        className="absolute bottom-0 left-0 right-0 bg-card border border-border border-b-0 rounded-t-[20px] px-3 pb-8 pt-2 shadow-2xl"
       >
         {/* Handle */}
         <div className="flex justify-center py-3">
-          <div className="w-9 h-1 rounded-full bg-white/15" />
+          <div className="w-9 h-1 rounded-full bg-border" />
         </div>
-        <p className="text-[0.6rem] font-bold tracking-widest text-dark-ghost uppercase px-1 mb-2.5">More</p>
+        <p className="text-[0.6rem] font-bold tracking-widest text-muted uppercase px-1 mb-2.5">More</p>
         <div className="grid grid-cols-4 gap-1.5">
           {items.map(item => {
             const isActive = item.href === pathname
@@ -176,14 +186,14 @@ function MoreDrawer({ items, onClose }: { items: NavItem[]; onClose: () => void 
                 onClick={close}
                 className={cn(
                   'flex flex-col items-center gap-1.5 rounded-2xl px-2 py-3.5 no-underline transition-colors',
-                  isActive ? 'bg-brand' : 'bg-white/[0.04] active:bg-white/[0.08]'
+                  isActive ? 'bg-primary' : 'bg-wash active:bg-border'
                 )}
               >
                 <NavIcon name={item.icon} active={isActive} />
                 <span
                   className={cn(
                     'text-center text-[0.6rem] leading-none',
-                    isActive ? 'font-bold text-cream' : 'font-medium text-dark-muted'
+                    isActive ? 'font-bold text-primary-foreground' : 'font-medium text-muted'
                   )}
                 >
                   {item.label}
@@ -254,13 +264,13 @@ export function MobilePillNav({ items }: { items: NavItem[] }) {
 
   return (
     <>
-      <nav className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-dark rounded-full p-[6px] border border-white/[0.07] shadow-[0_8px_32px_rgba(15,26,20,0.35),0_2px_8px_rgba(15,26,20,0.2)]">
+      <nav className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-card rounded-full p-[6px] border border-border shadow-[0_8px_32px_color-mix(in_srgb,var(--color-foreground)_18%,transparent),0_2px_8px_color-mix(in_srgb,var(--color-foreground)_10%,transparent)]">
         <div className="relative flex items-center">
           <div
             ref={blobRef}
             className={cn(
               'pointer-events-none absolute top-0 h-full rounded-full',
-              !isMoreActive && 'bg-brand'
+              !isMoreActive && 'bg-primary'
             )}
           />
           {primaryItems.map((item, i) => {
@@ -276,7 +286,7 @@ export function MobilePillNav({ items }: { items: NavItem[] }) {
                 <span
                   className={cn(
                     'text-[0.6rem] leading-none',
-                    isActive ? 'font-bold text-cream' : 'font-medium text-dark-muted'
+                    isActive ? 'font-bold text-primary-foreground' : 'font-medium text-muted'
                   )}
                 >
                   {item.label}
@@ -291,14 +301,14 @@ export function MobilePillNav({ items }: { items: NavItem[] }) {
               className="relative z-10 flex flex-col items-center justify-center gap-1 bg-transparent border-none cursor-pointer px-5 py-[10px] min-w-[68px]"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <circle cx="5" cy="12" r="1.8" fill={isMoreActive ? 'var(--color-cream)' : 'var(--color-dark-muted)'}/>
-                <circle cx="12" cy="12" r="1.8" fill={isMoreActive ? 'var(--color-cream)' : 'var(--color-dark-muted)'}/>
-                <circle cx="19" cy="12" r="1.8" fill={isMoreActive ? 'var(--color-cream)' : 'var(--color-dark-muted)'}/>
+                <circle cx="5" cy="12" r="1.8" fill={isMoreActive ? 'var(--color-primary-foreground)' : 'var(--color-muted)'}/>
+                <circle cx="12" cy="12" r="1.8" fill={isMoreActive ? 'var(--color-primary-foreground)' : 'var(--color-muted)'}/>
+                <circle cx="19" cy="12" r="1.8" fill={isMoreActive ? 'var(--color-primary-foreground)' : 'var(--color-muted)'}/>
               </svg>
               <span
                 className={cn(
                   'text-[0.6rem] leading-none',
-                  isMoreActive ? 'font-bold text-cream' : 'font-medium text-dark-muted'
+                  isMoreActive ? 'font-bold text-primary-foreground' : 'font-medium text-muted'
                 )}
               >
                 More
@@ -385,7 +395,7 @@ export function DesktopSidebar({
               Agency<span className="text-brand">OS</span>
             </span>
             {orgPlan && (
-              <span className="text-[0.48rem] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-brand/20 text-brand whitespace-nowrap">
+              <span className="text-[0.48rem] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-sidebar-primary/20 text-sidebar-primary whitespace-nowrap">
                 {orgPlan}
               </span>
             )}
@@ -408,7 +418,7 @@ export function DesktopSidebar({
               {item.dividerBefore && (
                 <div
                   className={`h-px mx-1 my-2 transition-opacity duration-200 ${collapsed ? 'opacity-0' : 'opacity-100'}`}
-                  style={{ background: 'rgba(255,255,255,0.06)' }}
+                  
                 />
               )}
               {/* FIXED HEIGHT h-[38px] guarantees 0px vertical layout shift during collapse */}
@@ -416,27 +426,27 @@ export function DesktopSidebar({
                 href={item.href}
                 title={collapsed ? item.label : undefined}
                 className={`group flex items-center h-[38px] rounded-[10px] overflow-hidden transition-colors relative shrink-0
-                  ${isActive ? 'bg-brand' : 'hover:bg-dark-hover'}`}
+                  ${isActive ? 'bg-sidebar-primary' : 'hover:bg-dark-hover'}`}
               >
                 {/* Active left bar */}
                 {isActive && (
-                  <div className="absolute left-1 top-[20%] h-[60%] w-[3px] rounded-r-[3px] bg-cream" />
+                  <div className="absolute left-1 top-[20%] h-[60%] w-[3px] rounded-r-[3px] bg-sidebar-primary-foreground" />
                 )}
 
                 {/* EXACTLY 48px wide to lock the icon dead center in a 64px sidebar */}
                 <div className="w-[48px] h-full flex items-center justify-center shrink-0">
-                  <NavIcon name={item.icon} active={isActive} />
+                  <NavIcon name={item.icon} active={isActive} tone="dark" />
                 </div>
 
                 <span
-                  className={`text-sm whitespace-nowrap transition-opacity duration-200 ${textOpacity} ${isActive ? 'font-bold text-cream' : 'font-medium text-dark-muted'}`}
+                  className={`text-sm whitespace-nowrap transition-opacity duration-200 ${textOpacity} ${isActive ? 'font-bold text-sidebar-primary-foreground' : 'font-medium text-dark-muted'}`}
                 >
                   {item.label}
                 </span>
 
                 {item.icon === 'notifications' && notifCount > 0 && (
                   <div className={`ml-auto pr-3 shrink-0 flex items-center transition-opacity duration-200 ${textOpacity}`}>
-                    <span className="min-w-5 h-5 rounded-full bg-cream text-brand text-[0.6rem] font-bold flex items-center justify-center px-1.5">
+                    <span className="min-w-5 h-5 rounded-full bg-sidebar-primary-foreground text-sidebar-primary text-[0.6rem] font-bold flex items-center justify-center px-1.5">
                       {notifCount}
                     </span>
                   </div>
@@ -474,7 +484,7 @@ export function DesktopSidebar({
           <>
             <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
             <div
-              className="absolute bottom-full bg-[#1a2e22] rounded-2xl overflow-hidden border border-white/[0.08] z-20 mb-1.5 shadow-[0_-8px_24px_rgba(0,0,0,0.3)]"
+              className="absolute bottom-full bg-dark-hover rounded-2xl overflow-hidden border border-dark-text/[0.1] z-20 mb-1.5 shadow-[0_-8px_24px_rgb(0_0_0/0.3)]"
               style={{
                 left: collapsed ? '68px' : '12px',
                 right: collapsed ? 'auto' : '12px',
@@ -484,7 +494,7 @@ export function DesktopSidebar({
               <Link
                 href="/settings"
                 onClick={() => setShowMenu(false)}
-                className="flex items-center gap-2.5 px-3.5 py-3 no-underline text-dark-text text-[0.82rem] font-semibold hover:bg-white/[0.06] transition-colors"
+                className="flex items-center gap-2.5 px-3.5 py-3 no-underline text-dark-text text-[0.82rem] font-semibold hover:bg-dark-text/[0.08] transition-colors"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <circle cx="12" cy="12" r="3" stroke="var(--color-dark-muted)" strokeWidth="1.8"/>
@@ -492,13 +502,13 @@ export function DesktopSidebar({
                 </svg>
                 Settings
               </Link>
-              <div className="h-px bg-white/[0.06] mx-3" />
+              <div className="h-px bg-dark-text/[0.08] mx-3" />
               <button
                 onClick={() => { setShowMenu(false); onLogout() }}
-                className="w-full flex items-center gap-2.5 px-3.5 py-3 bg-transparent border-none cursor-pointer text-coral text-[0.82rem] font-semibold text-left hover:bg-white/[0.06] transition-colors"
+                className="w-full flex items-center gap-2.5 px-3.5 py-3 bg-transparent border-none cursor-pointer text-[color-mix(in_srgb,var(--color-danger)_60%,white)] text-[0.82rem] font-semibold text-left hover:bg-dark-text/[0.08] transition-colors"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="var(--color-coral)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
                 Log Out
               </button>
@@ -509,12 +519,12 @@ export function DesktopSidebar({
         <button
           onClick={() => setShowMenu(v => !v)}
           title={collapsed ? `${userName} (${userRole})` : undefined}
-          className={`w-full flex items-center h-[56px] bg-transparent border-none cursor-pointer border-t border-white/[0.06] hover:bg-white/[0.05] transition-colors relative overflow-hidden px-2 shrink-0
-            ${showMenu ? 'bg-white/[0.05]' : ''}`}
+          className={`w-full flex items-center h-[56px] bg-transparent border-none cursor-pointer border-t border-dark-text/[0.08] hover:bg-dark-text/[0.06] transition-colors relative overflow-hidden px-2 shrink-0
+            ${showMenu ? 'bg-dark-text/[0.06]' : ''}`}
         >
           <div className="w-[48px] h-full flex items-center justify-center shrink-0">
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-[0.6rem] font-extrabold text-white"
+              className="w-8 h-8 rounded-full flex items-center justify-center text-[0.6rem] font-extrabold text-dark-text"
               style={{ background: userColor }}
             >
               {userInitials}

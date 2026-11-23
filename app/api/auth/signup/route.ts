@@ -1,7 +1,11 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse, type NextRequest } from 'next/server'
+import { rateLimit, clientIp, tooMany } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
+  const rl = rateLimit(`signup:${clientIp(request)}`, 5, 60 * 60 * 1000)
+  if (!rl.ok) return tooMany(rl.retryAfter)
+
   const { name, email, password, agencyName, slug } = await request.json()
 
   if (!name || !email || !password || !agencyName || !slug) {

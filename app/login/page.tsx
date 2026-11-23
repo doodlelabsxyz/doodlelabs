@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useRef, useId, Suspense } from 'react'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { createClient } from '@/lib/supabase/client'
@@ -11,21 +12,20 @@ gsap.registerPlugin(useGSAP)
 // ─── Floating decoration ───────────────────────────────────────────────────────
 
 function FloatingDots() {
-  const c = 'hsl(25,82%,60%)'
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden>
-      <div style={{ position:'absolute', top:'-60px', right:'-60px', width:'280px', height:'280px', borderRadius:'50%', background:`${c}20` }} />
-      <div style={{ position:'absolute', bottom:'-50px', left:'-50px', width:'200px', height:'200px', borderRadius:'50%', background:`${c}14` }} />
-      <div style={{ position:'absolute', top:'40%', left:'-20px', width:'90px', height:'90px', borderRadius:'50%', background:`${c}10` }} />
-      <div style={{ position:'absolute', top:'16%', right:'20%', width:'10px', height:'10px', borderRadius:'50%', background:`${c}70` }} />
-      <div style={{ position:'absolute', top:'30%', left:'24%', width:'7px', height:'7px', borderRadius:'50%', background:`${c}55` }} />
-      <div style={{ position:'absolute', bottom:'28%', right:'28%', width:'12px', height:'12px', borderRadius:'50%', background:`${c}50` }} />
-      <div style={{ position:'absolute', bottom:'20%', left:'34%', width:'8px', height:'8px', borderRadius:'50%', background:`${c}60` }} />
-      <svg style={{ position:'absolute', top:'22%', right:'14%', opacity:0.22 }} width="16" height="16" viewBox="0 0 16 16">
-        <path d="M8 2v12M2 8h12" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+      <div className="absolute -top-[60px] -right-[60px] size-[280px] rounded-full bg-mint/10" />
+      <div className="absolute -bottom-[50px] -left-[50px] size-[200px] rounded-full bg-mint/[0.08]" />
+      <div className="absolute top-[40%] -left-5 size-[90px] rounded-full bg-mint/[0.06]" />
+      <div className="absolute top-[16%] right-[20%] size-2.5 rounded-full bg-mint/40" />
+      <div className="absolute top-[30%] left-[24%] size-[7px] rounded-full bg-mint/30" />
+      <div className="absolute bottom-[28%] right-[28%] size-3 rounded-full bg-mint/30" />
+      <div className="absolute bottom-[20%] left-[34%] size-2 rounded-full bg-mint/35" />
+      <svg className="absolute top-[22%] right-[14%] opacity-20 stroke-mint" width="16" height="16" viewBox="0 0 16 16">
+        <path d="M8 2v12M2 8h12" strokeWidth="2" strokeLinecap="round"/>
       </svg>
-      <svg style={{ position:'absolute', bottom:'35%', left:'15%', opacity:0.16 }} width="12" height="12" viewBox="0 0 16 16">
-        <path d="M8 2v12M2 8h12" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+      <svg className="absolute bottom-[35%] left-[15%] opacity-15 stroke-mint" width="12" height="12" viewBox="0 0 16 16">
+        <path d="M8 2v12M2 8h12" strokeWidth="2" strokeLinecap="round"/>
       </svg>
     </div>
   )
@@ -33,14 +33,23 @@ function FloatingDots() {
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email,      setEmail]      = useState('')
   const [password,   setPassword]   = useState('')
-  const [authError,  setAuthError]  = useState('')
+  // null = no submit error yet; the URL error below shows until a sign-in attempt sets this.
+  const [submitError, setAuthError] = useState<string | null>(null)
   const [isEntering, setIsEntering] = useState(false)
+  const uid = useId()
+  const emailId = `${uid}-email`, passId = `${uid}-password`, errId = `${uid}-error`
   const leftRef = useRef<HTMLDivElement>(null)
   const formRef = useRef<HTMLDivElement>(null)
+
+  const urlError = searchParams.get('error') === 'auth_callback_failed'
+    ? 'That link is invalid or has expired. Please try again.'
+    : ''
+  const authError = submitError ?? urlError
 
   useGSAP(() => {
     gsap.fromTo(leftRef.current,  { x: -24, opacity: 0 }, { x: 0, opacity: 1, duration: 0.6, ease: 'back.out(1.2)' })
@@ -75,7 +84,8 @@ export default function LoginPage() {
     router.refresh()
   }
 
-  const brand = 'hsl(25,82%,60%)'
+  const inputCls = 'w-full min-h-11 rounded-xl border-[1.5px] border-border bg-background px-4 py-3.5 text-[0.9rem] font-medium text-foreground transition-colors placeholder:text-muted-foreground aria-invalid:border-danger focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+  const canSubmit = !!email && !!password
 
   return (
     <div className="flex min-h-dvh flex-col md:flex-row">
@@ -83,162 +93,141 @@ export default function LoginPage() {
       {/* ── LEFT: dark brand panel ──────────────────────────────────────────── */}
       <div
         ref={leftRef}
-        className="relative flex flex-col justify-between w-full md:flex-1 pt-10 pb-10 px-8 md:pt-14 md:pb-14 md:px-12"
-        style={{ background: '#0F1A14', minHeight: '360px' }}
+        className="relative flex min-h-[360px] w-full flex-col justify-between bg-dark px-8 pt-10 pb-10 md:flex-1 md:px-12 md:pt-14 md:pb-14"
       >
         <FloatingDots />
 
         {/* Logo */}
-        <div className="relative z-10 flex items-center" style={{ gap: '10px' }}>
+        <div className="relative z-10 flex items-center gap-2.5">
           <svg width="28" height="28" viewBox="0 0 30 30" fill="none">
-            <rect width="30" height="30" rx="9" fill={brand}/>
-            <path d="M9 22L15 8l6 14M11.5 17.5h7" stroke="hsl(42,30%,99%)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+            <rect width="30" height="30" rx="9" className="fill-mint"/>
+            <path d="M9 22L15 8l6 14M11.5 17.5h7" className="stroke-dark" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          <span className="font-bold" style={{ fontSize: '1rem', color: 'hsl(42,22%,84%)', letterSpacing: '-0.01em' }}>
-            Agency<span style={{ color: brand }}>OS</span>
+          <span className="text-base font-bold tracking-[-0.01em] text-dark-text">
+            Agency<span className="text-mint">OS</span>
           </span>
         </div>
 
         {/* Center illustration */}
-        <div className="relative z-10 flex flex-col" style={{ gap: '24px' }}>
+        <div className="relative z-10 flex flex-col gap-6">
 
           {/* Illustration card */}
-          <div style={{
-            width: '100%', aspectRatio: '4/3', maxHeight: '260px',
-            borderRadius: '20px',
-            background: `linear-gradient(145deg, ${brand}18 0%, ${brand}08 100%)`,
-            border: `1.5px dashed ${brand}40`,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            gap: '14px', position: 'relative', overflow: 'hidden',
-          }}>
-            <div style={{ position:'absolute', inset:0, background:`radial-gradient(ellipse at 50% 30%, ${brand}14 0%, transparent 70%)` }} />
+          <div className="relative flex aspect-[4/3] max-h-[260px] w-full flex-col items-center justify-center gap-3.5 overflow-hidden rounded-[20px] border-[1.5px] border-dashed border-mint/25 bg-gradient-to-br from-mint/10 to-mint/5">
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_30%,var(--color-mint)_0%,transparent_70%)] opacity-10" />
             {/* Character SVG */}
-            <svg width="72" height="88" viewBox="0 0 72 88" fill="none" style={{ position:'relative', zIndex:1, opacity:0.4 }}>
-              <circle cx="36" cy="22" r="16" stroke="hsl(42,22%,84%)" strokeWidth="1.5" fill="rgba(255,255,255,0.04)"/>
-              <path d="M8 80c0-15 12.5-24 28-24s28 9 28 24" stroke="hsl(42,22%,84%)" strokeWidth="1.5" strokeLinecap="round" fill="rgba(255,255,255,0.04)"/>
-              <path d="M16 58 Q8 48 6 38" stroke="hsl(42,22%,84%)" strokeWidth="1.5" strokeLinecap="round"/>
-              <path d="M56 58 Q64 48 66 38" stroke="hsl(42,22%,84%)" strokeWidth="1.5" strokeLinecap="round"/>
+            <svg width="72" height="88" viewBox="0 0 72 88" fill="none" className="relative z-[1] stroke-dark-text opacity-40">
+              <circle cx="36" cy="22" r="16" strokeWidth="1.5" className="fill-dark-text/5"/>
+              <path d="M8 80c0-15 12.5-24 28-24s28 9 28 24" strokeWidth="1.5" strokeLinecap="round" className="fill-dark-text/5"/>
+              <path d="M16 58 Q8 48 6 38" strokeWidth="1.5" strokeLinecap="round"/>
+              <path d="M56 58 Q64 48 66 38" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
-            <div style={{ position:'relative', zIndex:1, textAlign:'center' }}>
-              <p style={{ fontSize:'0.72rem', color:'rgba(213,207,191,0.4)', fontWeight:600 }}>Character Illustration</p>
-              <p style={{ fontSize:'0.65rem', color:'rgba(213,207,191,0.25)', marginTop:'3px' }}>Drop asset here</p>
+            <div className="relative z-[1] text-center">
+              <p className="text-[0.72rem] font-semibold text-dark-muted">Character Illustration</p>
+              <p className="mt-[3px] text-[0.65rem] text-dark-ghost">Drop asset here</p>
             </div>
           </div>
 
           {/* Tagline */}
           <div>
-            <p style={{ fontSize:'1.4rem', fontWeight:800, color:'hsl(42,22%,84%)', lineHeight:1.1, letterSpacing:'-0.02em' }}>
+            <p className="text-[1.4rem] font-extrabold leading-[1.1] tracking-[-0.02em] text-dark-text">
               Your agency,<br/>fully in control.
             </p>
-            <p style={{ fontSize:'0.875rem', color:'hsl(140,7%,48%)', marginTop:'8px', lineHeight:1.6 }}>
+            <p className="mt-2 text-sm leading-relaxed text-dark-muted">
               Plan, create, review and publish — all in one place.
             </p>
           </div>
         </div>
 
         {/* Bottom spacer for balance */}
-        <div className="relative z-10" style={{ height: '24px' }} />
+        <div className="relative z-10 h-6" />
       </div>
 
       {/* ── RIGHT: form panel ────────────────────────────────────────────────── */}
-      <div
-        className="flex flex-col justify-center items-center w-full md:flex-1 px-8 py-12 md:px-14 lg:px-20"
-        style={{ background: 'hsl(42,30%,97%)' }}
-      >
-        <div ref={formRef} className="w-full" style={{ maxWidth: '400px' }}>
+      <div className="flex w-full flex-col items-center justify-center bg-surface px-8 py-12 md:flex-1 md:px-14 lg:px-20">
+        <div ref={formRef} className="w-full max-w-[400px]">
 
           {/* Heading */}
-          <div style={{ marginBottom: '32px' }}>
-            <h1 className="font-bold" style={{ fontSize:'1.5rem', color:'hsl(24,20%,11%)', lineHeight:1.1, letterSpacing:'-0.02em' }}>
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold leading-[1.1] tracking-[-0.02em] text-foreground">
               Welcome back
             </h1>
-            <p style={{ fontSize:'0.875rem', color:'hsl(24,10%,44%)', marginTop:'8px', lineHeight:1.6 }}>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
               Sign in to your AgencyOS workspace.
             </p>
           </div>
 
           {/* Fields */}
-          <div className="flex flex-col" style={{ gap: '16px' }}>
-            <div className="flex flex-col" style={{ gap: '7px' }}>
-              <label className="font-semibold" style={{ fontSize:'0.75rem', color:'hsl(24,10%,44%)' }}>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-[7px]">
+              <label htmlFor={emailId} className="text-xs font-semibold text-muted-foreground">
                 Email address
               </label>
               <input
+                id={emailId}
                 type="email"
+                inputMode="email"
+                aria-invalid={authError ? true : undefined}
+                aria-describedby={authError ? errId : undefined}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="you@agencyos.app"
                 autoComplete="email"
-                className="w-full outline-none font-medium"
-                style={{
-                  padding:'14px 16px', borderRadius:'12px',
-                  background:'hsl(40,18%,94%)', border:'1.5px solid hsl(38,14%,88%)',
-                  fontSize:'0.9rem', color:'hsl(24,20%,11%)',
-                  transition:'border-color 0.15s ease',
-                }}
-                onFocus={e => { e.target.style.borderColor = brand }}
-                onBlur={e => { e.target.style.borderColor = 'hsl(38,14%,88%)' }}
+                className={inputCls}
               />
             </div>
 
-            <div className="flex flex-col" style={{ gap: '7px' }}>
-              <label className="font-semibold" style={{ fontSize:'0.75rem', color:'hsl(24,10%,44%)' }}>
-                Password
-              </label>
+            <div className="flex flex-col gap-[7px]">
+              <div className="flex items-center justify-between">
+                <label htmlFor={passId} className="text-xs font-semibold text-muted-foreground">
+                  Password
+                </label>
+                <Link href="/forgot-password" className="inline-flex min-h-11 items-center rounded-sm text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+                  Forgot password?
+                </Link>
+              </div>
               <input
+                id={passId}
                 type="password"
+                aria-invalid={authError ? true : undefined}
+                aria-describedby={authError ? errId : undefined}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
                 autoComplete="current-password"
-                className="w-full outline-none font-medium"
-                style={{
-                  padding:'14px 16px', borderRadius:'12px',
-                  background:'hsl(40,18%,94%)', border:'1.5px solid hsl(38,14%,88%)',
-                  fontSize:'0.9rem', color:'hsl(24,20%,11%)',
-                  transition:'border-color 0.15s ease',
-                }}
-                onFocus={e => { e.target.style.borderColor = brand }}
-                onBlur={e => { e.target.style.borderColor = 'hsl(38,14%,88%)' }}
+                className={inputCls}
                 onKeyDown={e => { if (e.key === 'Enter') handleEnter() }}
               />
             </div>
 
             {authError && (
-              <p style={{ fontSize:'0.78rem', color:'hsl(4,72%,50%)', fontWeight:500 }}>
+              <p id={errId} role="alert" className="text-[0.78rem] font-medium text-danger">
                 {authError}
               </p>
             )}
 
             <button
               onClick={handleEnter}
-              disabled={isEntering || !email || !password}
-              className="w-full font-bold"
-              style={{
-                marginTop:'4px', padding:'16px 24px',
-                borderRadius:'9999px',
-                background: (!email || !password) ? 'hsl(38,14%,82%)' : brand,
-                color: 'hsl(42,30%,99%)',
-                fontSize:'0.9rem', letterSpacing:'0.02em',
-                boxShadow: (!email || !password) ? 'none' : `0 6px 24px ${brand}45`,
-                transition:'background 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease, opacity 0.1s ease',
-                opacity: isEntering ? 0.75 : 1,
-                cursor: (!email || !password) ? 'not-allowed' : 'pointer',
-              }}
-              onMouseEnter={e => { if (email && password && !isEntering) (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)' }}
-              onMouseDown={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0) scale(0.98)' }}
-              onMouseUp={e => { if (email && password) (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px) scale(1)' }}
+              disabled={isEntering || !canSubmit}
+              aria-busy={isEntering}
+              className="mt-1 min-h-11 w-full cursor-pointer rounded-full bg-primary px-6 py-4 text-[0.9rem] font-bold tracking-[0.02em] text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-200 hover:not-disabled:-translate-y-0.5 active:not-disabled:scale-[0.98] disabled:cursor-not-allowed disabled:bg-border disabled:text-muted-foreground disabled:shadow-none aria-busy:opacity-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               {isEntering ? 'Signing in...' : 'Sign in'}
             </button>
           </div>
 
-          <p className="text-center" style={{ marginTop:'24px', fontSize:'0.75rem', color:'hsl(24,8%,58%)' }}>
+          <p className="mt-6 text-center text-xs text-muted-foreground">
             Use your AgencyOS credentials to sign in.
           </p>
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   )
 }

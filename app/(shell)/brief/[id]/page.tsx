@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 
+import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -34,17 +36,12 @@ import type {
   VideoScene,
 } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { TypeIcon } from '@/components/ui/type-icon'
+import { CONTENT_TYPE_STYLE } from '@/lib/color-map'
 
 gsap.registerPlugin(useGSAP)
 
 type BriefTab = 'overview' | 'script' | 'feedback'
-
-const TYPE_CFG: Record<ContentType, { label: string; chipClass: string; accentClass: string; tintClass: string }> = {
-  graphic: { label: 'Graphic', chipClass: 'bg-coral text-white border-coral/30', accentClass: 'text-coral', tintClass: 'bg-coral/10 border-coral/20' },
-  video: { label: 'Video', chipClass: 'bg-lemon text-foreground border-lemon/30', accentClass: 'text-lemon', tintClass: 'bg-lemon/10 border-lemon/20' },
-  reel: { label: 'Reel', chipClass: 'bg-mint text-white border-mint/30', accentClass: 'text-mint', tintClass: 'bg-mint/10 border-mint/20' },
-  story: { label: 'Story', chipClass: 'bg-lavender text-white border-lavender/30', accentClass: 'text-lavender', tintClass: 'bg-lavender/10 border-lavender/20' },
-}
 
 const PLATFORMS: Platform[] = ['instagram', 'tiktok', 'facebook', 'linkedin']
 const ASSIGNABLE_ROLES: Role[] = ['writer', 'designer', 'videographer', 'editor', 'poster']
@@ -59,18 +56,12 @@ const STATUS_OPTIONS: { value: ContentStatus; label: string }[] = [
   { value: 'scheduled', label: 'Scheduled' },
 ]
 
-const STATUS_BADGE: Partial<Record<ContentStatus, 'planned' | 'brief-ready' | 'in-design' | 'in-editing' | 'ready-for-review' | 'approved' | 'scheduled'>> = {
-  planned: 'planned',
-  'brief-ready': 'brief-ready',
-  'in-design': 'in-design',
-  'in-editing': 'in-editing',
-  'ready-for-review': 'ready-for-review',
-  approved: 'approved',
-  scheduled: 'scheduled',
-}
-
 type ClientRow = { id: string; name: string; brand_color: string; initials: string }
 type UserRow = { id: string; name: string; role: string }
+type DeliverableRow = { id: string; file_name: string; file_size: string | null; storage_path: string | null; url?: string }
+
+const UPLOAD_ROLES = ['admin', 'designer', 'videographer', 'editor']
+const isImage = (name: string) => /\.(png|jpe?g|webp|gif|svg)$/i.test(name)
 
 type CommentLocal = {
   id: string
@@ -138,6 +129,14 @@ export default function BriefPage() {
   const id = params.id as string
   const isNew = id === 'new'
 
+  // This is the internal editor (script notes, task assignment, full brief) — not
+  // client-safe. A client's RLS grants SELECT on their own content_pieces at any
+  // status, so nothing stops them loading this route directly by URL; it's only
+  // absent from their nav. Redirect to the client-safe approval view instead.
+  useEffect(() => {
+    if (user?.role === 'client') router.replace(isNew ? '/client' : `/client/approval/${id}`)
+  }, [user, router, id, isNew])
+
   const qDate = searchParams.get('date') || ''
   const qClient = searchParams.get('client') || ''
   const qType = (searchParams.get('type') || 'graphic') as ContentType
@@ -146,6 +145,8 @@ export default function BriefPage() {
   const [mounted, setMounted] = useState(false)
   const [tab, setTab] = useState<BriefTab>('overview')
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const [saving, setSaving] = useState(false)
   const [title, setTitle] = useState(isNew ? qTitle : '')
   const [type, setType] = useState<ContentType>(isNew ? qType : 'graphic')
   const [clientId, setClientId] = useState(isNew ? qClient : '')
@@ -165,6 +166,7 @@ export default function BriefPage() {
   const [replyText, setReplyText] = useState('')
   const [clients, setClients] = useState<ClientRow[]>([])
   const [users, setUsers] = useState<UserRow[]>([])
+  const [deliverables, setDeliverables] = useState<DeliverableRow[]>([])
 
   useEffect(() => {
     async function load() {
@@ -173,7 +175,11 @@ export default function BriefPage() {
       if (isNew) {
         const [cliRes, usrRes] = await Promise.all([
           supabase.from('clients').select('id, name, brand_color, initials'),
-          supabase.from('users').select('id, name, role').in('role', ASSIGNABLE_ROLES),
+          // Plain `users` SELECT is locked to self+admin (protects salary/email/phone),
+          // which silently returns nothing for a non-admin creator/editor (writer,
+          // designer, etc.) — the assignee picker would render empty. Go through the
+          // safe org-wide name/role lookup instead. See get_org_users_safe().
+          supabase.rpc('get_org_users_safe').in('role', ASSIGNABLE_ROLES),
         ])
         const nextClients = cliRes.data || []
         setClients(nextClients)
@@ -185,7 +191,11 @@ export default function BriefPage() {
           supabase.from('content_scripts').select('*').eq('content_id', id).maybeSingle(),
           supabase.from('feedback_comments').select('*').eq('content_id', id).order('created_at'),
           supabase.from('clients').select('id, name, brand_color, initials'),
-          supabase.from('users').select('id, name, role').in('role', ASSIGNABLE_ROLES),
+          // Plain `users` SELECT is locked to self+admin (protects salary/email/phone),
+          // which silently returns nothing for a non-admin creator/editor (writer,
+          // designer, etc.) — the assignee picker would render empty. Go through the
+          // safe org-wide name/role lookup instead. See get_org_users_safe().
+          supabase.rpc('get_org_users_safe').in('role', ASSIGNABLE_ROLES),
         ])
 
         if (cpRes.data) {
@@ -242,6 +252,35 @@ export default function BriefPage() {
     load()
   }, [id, isNew, qClient])
 
+  useEffect(() => {
+    if (isNew) return
+    let cancelled = false
+    async function loadDeliverables() {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('assets')
+        .select('id, file_name, file_size, storage_path')
+        .eq('content_id', id)
+        .order('uploaded_at', { ascending: false })
+      const rows = (data || []) as DeliverableRow[]
+      const paths = rows.map(a => a.storage_path).filter((p): p is string => !!p)
+      const urls: Record<string, string> = {}
+      if (paths.length) {
+        const { data: signed } = await supabase.storage.from('assets').createSignedUrls(paths, 3600)
+        signed?.forEach(sg => {
+          if (sg.path && sg.signedUrl) urls[sg.path] = sg.signedUrl
+        })
+      }
+      if (!cancelled) {
+        setDeliverables(rows.map(a => ({ ...a, url: a.storage_path ? urls[a.storage_path] : undefined })))
+      }
+    }
+    void loadDeliverables()
+    return () => {
+      cancelled = true
+    }
+  }, [id, isNew])
+
   useGSAP(
     () => {
       if (!mounted || !formRef.current) return
@@ -262,10 +301,19 @@ export default function BriefPage() {
     { dependencies: [saved] }
   )
 
-  if (!mounted) return null
+  if (!mounted) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-col gap-3.5 px-4 py-5" aria-busy="true" aria-label="Loading brief">
+        <Skeleton className="h-14 w-full rounded-2xl" />
+        <Skeleton className="h-10 w-1/2 rounded-full" />
+        <Skeleton className="h-32 w-full rounded-2xl" />
+        <Skeleton className="h-48 w-full rounded-2xl" />
+      </div>
+    )
+  }
 
   const client = clients.find(item => item.id === clientId) || clients[0]
-  const typeConfig = TYPE_CFG[type]
+  const typeConfig = CONTENT_TYPE_STYLE[type]
   const unreadFeedback = comments.filter(comment => comment.authorType === 'client' && !comment.resolved).length
 
   function togglePlatform(platform: Platform) {
@@ -277,6 +325,20 @@ export default function BriefPage() {
   }
 
   async function handleSave() {
+    if (saving) return
+    if (!clientId) {
+      setSaveError(
+        clients.length === 0
+          ? 'Add a client before creating content — there are none in this workspace yet.'
+          : 'Please select a client.'
+      )
+      return
+    }
+    setSaving(true)
+    setSaveError('')
+    let partialFailure = false
+    let createdId: string | null = null
+
     const supabase = createClient()
     const orgId = user?.org_id
     const contentData = {
@@ -307,12 +369,18 @@ export default function BriefPage() {
     if (isNew) {
       const { data: newContent, error: insertError } = await supabase.from('content_pieces').insert(contentData).select('id').single()
       if (insertError) {
-        alert(`Failed to save: ${insertError.message}`)
+        setSaveError('Something went wrong saving this brief. Please try again.')
+        setSaving(false)
         return
       }
 
       if (newContent) {
-        await supabase.from('content_scripts').insert({ content_id: newContent.id, org_id: orgId, ...scriptData })
+        createdId = newContent.id
+        const { error: scriptError } = await supabase.from('content_scripts').insert({ content_id: newContent.id, org_id: orgId, ...scriptData })
+        if (scriptError) {
+          partialFailure = true
+          setSaveError('Brief was created, but the script/copy details failed to save. You can re-open it and try again.')
+        }
 
         const { data: team } = await supabase.from('client_team').select('role, user_id').eq('client_id', clientId)
         if (team && team.length > 0) {
@@ -323,27 +391,63 @@ export default function BriefPage() {
             editor: `Edit: ${title}`,
             poster: `Schedule & post: ${title}`,
           }
+          // Only the roles this content type actually needs — a videographer
+          // has nothing to film for a static graphic, a designer has nothing
+          // to design for a video. Writer/poster apply to every type.
+          const relevantRoles: Role[] =
+            type === 'video' || type === 'reel'
+              ? ['writer', 'videographer', 'editor', 'poster']
+              : ['writer', 'designer', 'poster']
+          const relevantTeam = team.filter((entry: { role: string; user_id: string }) => relevantRoles.includes(entry.role as Role))
 
-          await supabase.from('tasks').insert(
-            team.map((entry: { role: string; user_id: string }) => ({
-              title: roleTask[entry.role] ?? `${entry.role}: ${title}`,
-              description: `Auto-generated task for "${title}"`,
-              content_id: newContent.id,
-              client_id: clientId,
-              assigned_to: entry.user_id,
-              role: entry.role,
-              due_date: schedDate || new Date().toISOString().split('T')[0],
-              status: 'pending',
-              org_id: orgId,
-            }))
-          )
+          if (relevantTeam.length > 0) {
+            const { error: taskError } = await supabase.from('tasks').insert(
+              relevantTeam.map((entry: { role: string; user_id: string }) => ({
+                title: roleTask[entry.role] ?? `${entry.role}: ${title}`,
+                description: `Auto-generated task for "${title}"`,
+                content_id: newContent.id,
+                client_id: clientId,
+                assigned_to: entry.user_id,
+                role: entry.role,
+                due_date: schedDate || new Date().toISOString().split('T')[0],
+                status: 'pending',
+                org_id: orgId,
+              }))
+            )
+            if (taskError) {
+              partialFailure = true
+              setSaveError('Brief was created, but team tasks failed to generate. You can assign them manually.')
+            }
+          }
         }
       }
     } else {
-      await Promise.all([
+      const results = await Promise.all([
         supabase.from('content_pieces').update(contentData).eq('id', id),
         supabase.from('content_scripts').upsert({ content_id: id, org_id: user?.org_id, ...scriptData }),
       ])
+      if (results.some(r => r.error)) {
+        setSaveError('Something went wrong saving your changes. Please try again.')
+        setSaving(false)
+        return
+      }
+    }
+
+    setSaving(false)
+
+    // A partial failure (script or auto-task generation) means the content
+    // piece itself was already created — send them to its real edit URL so
+    // a retry goes through the update/upsert path instead of the isNew
+    // insert path, which would otherwise create a duplicate content_pieces
+    // row on the next "Create Brief" click.
+    if (partialFailure) {
+      if (isNew && createdId) router.replace(`/brief/${createdId}`)
+      return
+    }
+
+    if (isNew && createdId) {
+      router.replace(`/brief/${createdId}`)
+      return
     }
 
     setSaved(true)
@@ -455,7 +559,7 @@ export default function BriefPage() {
     <main className="page-main relative flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">
       {saved && (
         <div ref={overlayRef} className="fixed inset-0 z-100 flex flex-col items-center justify-center gap-4 bg-success/5">
-          <div className="flex size-16 items-center justify-center rounded-full bg-success text-3xl font-extrabold text-white">
+          <div className="flex size-16 items-center justify-center rounded-full bg-success text-3xl font-extrabold text-success-foreground">
             ✓
           </div>
           <p className="text-xl font-extrabold text-success">{isNew ? 'Brief created!' : 'Changes saved!'}</p>
@@ -463,18 +567,19 @@ export default function BriefPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-4 border-b border-border bg-foreground px-5 py-4 text-background">
+      <div className="flex flex-col gap-4 border-b border-border bg-dark px-5 py-4 text-dark-text">
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="icon-sm" onClick={() => router.back()} className="border-white/10 bg-white/5 text-background hover:bg-white/10 hover:text-background">
+          <Button variant="outline" size="icon-sm" onClick={() => router.back()} className="border-white/10 bg-white/5 text-dark-text hover:bg-white/10 hover:text-dark-text">
             ←
           </Button>
           <div className="min-w-0 flex-1">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-background/50">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-dark-muted">
               {isNew ? 'New Content' : 'Content Brief'}
             </p>
-            <p className="truncate text-lg font-extrabold text-background">{title || 'Untitled'}</p>
+            <p className="truncate text-lg font-extrabold text-dark-text">{title || 'Untitled'}</p>
           </div>
-          <Badge variant="outline" className={cn('px-3 py-1', typeConfig.chipClass)}>
+          <Badge variant="outline" className={cn('px-3 py-1', typeConfig.className)}>
+            <TypeIcon name={typeConfig.icon} className="size-3" />
             {typeConfig.label}
           </Badge>
         </div>
@@ -490,7 +595,7 @@ export default function BriefPage() {
                 key={item.key}
                 value={item.key}
                 className={cn(
-                  'rounded-none px-4 py-2 text-sm font-semibold text-background/55 hover:text-background data-active:text-background',
+                  'rounded-none px-4 py-2 text-sm font-semibold text-dark-muted hover:text-dark-text data-active:text-dark-text',
                   'after:bg-current'
                 )}
               >
@@ -501,30 +606,83 @@ export default function BriefPage() {
 
           <div ref={formRef} className="flex flex-col gap-4 px-0 py-5">
             <TabsContent value="overview" className="flex flex-col gap-4">
+              {!isNew && (
+                <SectionShell
+                  title="Deliverables"
+                  description="Files uploaded for this piece"
+                  action={
+                    user && UPLOAD_ROLES.includes(user.role) ? (
+                      <Button
+                        size="sm"
+                        onClick={() => router.push(`/assets?content=${id}`)}
+                        className="min-h-11 bg-primary text-primary-foreground hover:bg-primary/85 md:min-h-0"
+                      >
+                        Upload deliverable
+                      </Button>
+                    ) : undefined
+                  }
+                >
+                  {deliverables.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No deliverables uploaded yet.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {deliverables.map(file => (
+                        <a
+                          key={file.id}
+                          href={file.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex min-h-11 flex-col overflow-hidden rounded-lg border border-border bg-background text-xs hover:border-primary/40"
+                        >
+                          {file.url && isImage(file.file_name) && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={file.url} alt={file.file_name} className="h-24 w-full object-cover" />
+                          )}
+                          <span className="truncate px-2 py-2 font-semibold text-foreground">{file.file_name}</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </SectionShell>
+              )}
+
               <SectionShell title="Content Details">
                 <FieldBlock label="Client">
-                  <div className="flex flex-wrap gap-2">
-                    {clients.map(item => (
-                      <Button
-                        key={item.id}
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setClientId(item.id)}
-                        className={cn(
-                          clientId === item.id && 'border-[var(--client-color)] bg-[var(--client-color)] text-white hover:bg-[var(--client-color)] hover:text-white'
-                        )}
-                        style={clientId === item.id ? ({ '--client-color': item.brand_color } as CSSProperties) : undefined}
-                      >
-                        {item.name}
-                      </Button>
-                    ))}
-                  </div>
+                  {clients.length === 0 ? (
+                    <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border bg-secondary/40 px-3 py-3">
+                      <p className="text-xs text-muted-foreground">
+                        You don&apos;t have any clients yet — add one before creating content.
+                      </p>
+                      <Link href="/clients" className="w-fit text-xs font-semibold text-primary hover:underline">
+                        Go to Clients →
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {clients.map(item => (
+                        <Button
+                          key={item.id}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setClientId(item.id)
+                            setSaveError('')
+                          }}
+                          className={cn(
+                            clientId === item.id && 'border-primary bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground'
+                          )}
+                        >
+                          {item.name}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
                 </FieldBlock>
 
                 <FieldBlock label="Content Type">
                   <div className="flex flex-wrap gap-2">
                     {(['graphic', 'video', 'reel', 'story'] as ContentType[]).map(item => {
-                      const cfg = TYPE_CFG[item]
+                      const cfg = CONTENT_TYPE_STYLE[item]
                       const active = type === item
                       return (
                         <Button
@@ -532,8 +690,9 @@ export default function BriefPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => setType(item)}
-                          className={cn(active && cfg.chipClass)}
+                          className={cn(active && cfg.className)}
                         >
+                          <TypeIcon name={cfg.icon} className="size-3" />
                           {cfg.label}
                         </Button>
                       )
@@ -558,7 +717,7 @@ export default function BriefPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => togglePlatform(platform)}
-                      className={cn(platforms.includes(platform) && 'border-sky bg-sky-tint text-sky hover:bg-sky-tint')}
+                      className={cn(platforms.includes(platform) && 'border-primary bg-wash text-primary hover:bg-wash')}
                     >
                       {platform}
                     </Button>
@@ -615,9 +774,8 @@ export default function BriefPage() {
                         onClick={() => toggleAssign(member.id)}
                         className={cn(
                           'h-auto rounded-full px-2 py-1',
-                          assigned && 'border-[var(--avatar-color)] bg-[var(--avatar-color)]/10 text-[var(--avatar-color)]'
+                          assigned && 'border-primary bg-wash text-primary'
                         )}
-                        style={assigned ? ({ '--avatar-color': `var(--avatar-color-${member.id})` } as CSSProperties) : undefined}
                       >
                         <UserAvatar userId={member.id} name={member.name} size="sm" />
                         {member.name.split(' ')[0]}
@@ -635,15 +793,15 @@ export default function BriefPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => setStatus(option.value)}
-                      className={cn(status === option.value && 'border-coral bg-coral/10 text-coral hover:bg-coral/10')}
+                      className={cn(status === option.value && 'border-primary bg-primary/10 text-primary hover:bg-primary/10')}
                     >
                       {option.label}
                     </Button>
                   ))}
                 </div>
-                {STATUS_BADGE[status] && (
+                {status && (
                   <div>
-                    <StatusBadge status={STATUS_BADGE[status]}>{STATUS_OPTIONS.find(option => option.value === status)?.label}</StatusBadge>
+                    <StatusBadge status={status}>{STATUS_OPTIONS.find(option => option.value === status)?.label}</StatusBadge>
                   </div>
                 )}
               </SectionShell>
@@ -748,7 +906,7 @@ export default function BriefPage() {
                   <SectionShell
                     title="Scene Breakdown"
                     action={
-                      <Button variant="outline" size="sm" onClick={addScene} className={typeConfig.tintClass}>
+                      <Button variant="outline" size="sm" onClick={addScene} className="border-border bg-wash">
                         Add Scene
                       </Button>
                     }
@@ -760,7 +918,7 @@ export default function BriefPage() {
                         <Card key={index} size="sm" className="border-border bg-background">
                           <CardContent className="flex flex-col gap-4 py-4">
                             <div className="flex items-center gap-3">
-                              <div className={cn('flex size-7 items-center justify-center rounded-md text-xs font-extrabold', typeConfig.chipClass)}>
+                              <div className={cn('flex size-7 items-center justify-center rounded-md text-xs font-extrabold', typeConfig.className)}>
                                 {index + 1}
                               </div>
                               <Input
@@ -799,7 +957,7 @@ export default function BriefPage() {
                 <SectionShell
                   title="Story Frames"
                   action={
-                    <Button variant="outline" size="sm" onClick={addFrame} className={typeConfig.tintClass}>
+                    <Button variant="outline" size="sm" onClick={addFrame} className="border-border bg-wash">
                       Add Frame
                     </Button>
                   }
@@ -811,7 +969,7 @@ export default function BriefPage() {
                       <Card key={index} size="sm" className="border-border bg-background">
                         <CardContent className="flex flex-col gap-4 py-4">
                           <div className="flex items-center gap-3">
-                            <div className={cn('flex size-7 items-center justify-center rounded-md text-xs font-extrabold', typeConfig.chipClass)}>
+                            <div className={cn('flex size-7 items-center justify-center rounded-md text-xs font-extrabold', typeConfig.className)}>
                               {index + 1}
                             </div>
                             <span className="text-xs font-semibold text-muted-foreground">Frame {index + 1} of {frames.length}</span>
@@ -853,7 +1011,7 @@ export default function BriefPage() {
             <TabsContent value="feedback" className="flex flex-col gap-4">
               <SectionShell title="Add Note">
                 <Textarea value={newComment} onChange={e => setNewComment(e.target.value)} rows={3} className="resize-none bg-background leading-7" placeholder="Leave a note for the team or response to client feedback..." />
-                <Button onClick={addComment} disabled={!newComment.trim()} className="w-fit bg-sky text-white hover:bg-sky/85">
+                <Button onClick={addComment} disabled={!newComment.trim()} className="w-fit bg-primary text-primary-foreground hover:bg-primary/85">
                   Post note
                 </Button>
               </SectionShell>
@@ -873,14 +1031,14 @@ export default function BriefPage() {
                         data-animate="brief-section"
                         className={cn(
                           comment.resolved && 'opacity-80',
-                          !comment.resolved && isClient && 'border-coral/35 bg-coral/5',
-                          !comment.resolved && !isClient && 'border-sky/35 bg-sky/5'
+                          !comment.resolved && isClient && 'border-primary/35 bg-primary/5',
+                          !comment.resolved && !isClient && 'border-primary/35 bg-primary/5'
                         )}
                       >
                         <CardContent className="flex flex-col gap-4 py-4">
                           <div className="flex items-start gap-3">
                             {isClient && client ? (
-                              <ClientFeedbackAvatar initials={comment.authorName.split(' ').map(word => word[0]).join('').slice(0, 2)} color={client.brand_color} />
+                              <ClientFeedbackAvatar initials={comment.authorName.split(' ').map(word => word[0]).join('').slice(0, 2)} />
                             ) : (
                               <UserAvatar userId={comment.authorId} name={comment.authorName} size="sm" />
                             )}
@@ -890,7 +1048,7 @@ export default function BriefPage() {
                                 <Badge
                                   variant="outline"
                                   className={cn(
-                                    isClient ? 'border-coral/25 bg-coral/10 text-coral' : 'border-sky/25 bg-sky-tint text-sky'
+                                    isClient ? 'border-primary/25 bg-primary/10 text-primary' : 'border-primary/25 bg-wash text-primary'
                                   )}
                                 >
                                   {isClient ? 'Client' : 'Team'}
@@ -933,7 +1091,7 @@ export default function BriefPage() {
                           {isReplying && (
                             <div className="rounded-xl border border-border bg-background px-4 py-4">
                               <Textarea autoFocus value={replyText} onChange={e => setReplyText(e.target.value)} rows={2} className="mb-3 resize-none bg-card leading-7" placeholder="Write a reply..." />
-                              <Button onClick={() => addReply(comment.id)} disabled={!replyText.trim()} className="w-fit bg-sky text-white hover:bg-sky/85">
+                              <Button onClick={() => addReply(comment.id)} disabled={!replyText.trim()} className="w-fit bg-primary text-primary-foreground hover:bg-primary/85">
                                 Send
                               </Button>
                             </div>
@@ -951,8 +1109,16 @@ export default function BriefPage() {
 
       {tab !== 'feedback' && (
         <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background/95 to-transparent px-5 pb-5 pt-4">
-          <Button onClick={handleSave} size="lg" className="w-full bg-coral text-white shadow-md hover:bg-coral/85">
-            {isNew ? 'Create Brief' : 'Save Changes'}
+          {saveError && (
+            <p className="mb-2 text-center text-xs font-semibold text-danger">{saveError}</p>
+          )}
+          <Button
+            onClick={handleSave}
+            size="lg"
+            disabled={saving || (isNew && clients.length === 0)}
+            className="w-full bg-primary text-primary-foreground shadow-md hover:bg-primary/85 disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : isNew ? 'Create Brief' : 'Save Changes'}
           </Button>
         </div>
       )}
@@ -960,9 +1126,9 @@ export default function BriefPage() {
   )
 }
 
-function ClientFeedbackAvatar({ initials, color }: { initials: string; color: string }) {
+function ClientFeedbackAvatar({ initials }: { initials: string }) {
   return (
-    <div className="flex size-8 items-center justify-center rounded-full bg-[var(--client-color)] text-[0.6rem] font-extrabold text-white" style={{ '--client-color': color } as CSSProperties}>
+    <div className="flex size-8 items-center justify-center rounded-full bg-primary text-[0.6rem] font-extrabold text-primary-foreground">
       {initials}
     </div>
   )

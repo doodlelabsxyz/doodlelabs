@@ -4,11 +4,12 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { AppSidebar } from '@/components/shell/AppSidebar'
 import { MobilePillNav } from '@/components/shell/PillNav'
-import { NAV_BY_ROLE, type Role } from '@/lib/types'
+import { NAV_BY_ROLE, PLAN_LIMITS, type OrgPlan, type Role } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { getInitials, getAvatarColor } from '@/lib/utils'
 import { OrgProvider, useOrg } from '@/lib/supabase/OrgContext'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import { ToasterProvider } from '@/components/ui/toaster'
 
 // Inner component — consumes OrgContext (must be a child of OrgProvider)
 function ShellContent({ children }: { children: React.ReactNode }) {
@@ -17,7 +18,7 @@ function ShellContent({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<Role>('admin')
   const [userName, setUserName] = useState('Loading...')
   const [userInitials, setUserInitials] = useState('...')
-  const [userColor, setUserColor] = useState('hsl(200,82%,58%)')
+  const [userColor, setUserColor] = useState('#14532D')
   const [notifCount, setNotifCount] = useState(0)
   const [mounted, setMounted] = useState(false)
 
@@ -85,9 +86,25 @@ function ShellContent({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut()
   }
 
-  const navItems = NAV_BY_ROLE[role] || NAV_BY_ROLE.admin
+  const rawNavItems = NAV_BY_ROLE[role] || NAV_BY_ROLE.admin
+  // Hide plan-gated nav items once the org's plan is known — avoids a dead-end
+  // link to a page that will just show the upgrade wall.
+  const navItems = org
+    ? rawNavItems.filter(item => {
+        const limits = PLAN_LIMITS[org.plan as OrgPlan]
+        if (item.icon === 'analytics') return limits.hasAnalytics
+        if (item.icon === 'audit') return limits.hasAudit
+        return true
+      })
+    : rawNavItems
 
-  if (!mounted) return null
+  if (!mounted) {
+    return (
+      <div className="flex h-dvh w-full items-center justify-center bg-background">
+        <div className="size-9 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+      </div>
+    )
+  }
 
   return (
     <SidebarProvider className="h-dvh overflow-hidden">
@@ -115,7 +132,9 @@ function ShellContent({ children }: { children: React.ReactNode }) {
 export default function ShellLayout({ children }: { children: React.ReactNode }) {
   return (
     <OrgProvider>
-      <ShellContent>{children}</ShellContent>
+      <ToasterProvider>
+        <ShellContent>{children}</ShellContent>
+      </ToasterProvider>
     </OrgProvider>
   )
 }

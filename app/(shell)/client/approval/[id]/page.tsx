@@ -1,18 +1,22 @@
 'use client'
 
-import { useState, useEffect, useRef, type CSSProperties } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { useRouter, useParams } from 'next/navigation'
 
+import { CelebrateCharacter } from '@/components/illustrations'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
+import { StatusIcon, TypeIcon } from '@/components/ui/type-icon'
 import { UserAvatar } from '@/components/ui/user-avatar'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/supabase/useUser'
 import { cn } from '@/lib/utils'
+import { CONTENT_TYPE_STYLE } from '@/lib/color-map'
+import { needsClientAction, type ContentType } from '@/lib/types'
 
 gsap.registerPlugin(useGSAP)
 
@@ -22,21 +26,13 @@ type ContentRow = {
   type: string
   status: string
   caption: string | null
-  notes: string | null
   scheduled_date: string
   platforms: string[]
   assigned_to: string[]
   client_id: string
 }
-type ClientRow = { id: string; name: string; initials: string; brand_color: string }
+type ClientRow = { id: string; name: string; initials: string }
 type UserRow = { id: string; name: string; role: string }
-
-const TYPE_CFG = {
-  graphic: { label: 'Graphic', color: 'hsl(14 72% 62%)', chipClass: 'border-coral/25 bg-coral/10 text-coral', icon: '🎨' },
-  video: { label: 'Video', color: 'hsl(40 95% 52%)', chipClass: 'border-lemon/25 bg-lemon/10 text-lemon', icon: '🎬' },
-  reel: { label: 'Reel', color: 'hsl(161 58% 44%)', chipClass: 'border-mint/25 bg-mint/10 text-mint', icon: '🎞️' },
-  story: { label: 'Story', color: 'hsl(268 60% 68%)', chipClass: 'border-lavender/25 bg-lavender/10 text-lavender', icon: '📖' },
-}
 
 const PLATFORM_ICONS: Record<string, string> = {
   instagram: 'IG',
@@ -47,10 +43,6 @@ const PLATFORM_ICONS: Record<string, string> = {
 
 function formatDate(s: string) {
   return new Date(`${s}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-}
-
-function brandStyle(color?: string): CSSProperties | undefined {
-  return color ? ({ '--brand-color': color } as CSSProperties) : undefined
 }
 
 export default function ApprovalPage() {
@@ -70,25 +62,28 @@ export default function ApprovalPage() {
   const [showNoteBox, setShowNoteBox] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
       const { data: piece } = await supabase
-        .from('content_pieces')
-        .select('id, title, type, status, caption, notes, scheduled_date, platforms, assigned_to, client_id')
+        .from('content_pieces_client')
+        .select('id, title, type, status, caption, scheduled_date, platforms, assigned_to, client_id')
         .eq('id', id)
         .single()
       if (!piece) return
       setCp(piece)
 
-      const [clientRes, assigneesRes] = await Promise.all([
-        supabase.from('clients').select('id, name, initials, brand_color').eq('id', piece.client_id).single(),
-        piece.assigned_to?.length
-          ? supabase.from('users').select('id, name, role').in('id', piece.assigned_to)
-          : Promise.resolve({ data: [] }),
+      const [clientRes, orgUsersRes] = await Promise.all([
+        supabase.from('clients').select('id, name, initials').eq('id', piece.client_id).single(),
+        // Plain `users` SELECT is locked to self+admin (protects salary/email/phone),
+        // which silently returns nothing for a client account — go through the
+        // safe org-wide name/role lookup instead. See get_org_users_safe().
+        supabase.rpc('get_org_users_safe'),
       ])
       if (clientRes.data) setClient(clientRes.data)
-      if (assigneesRes.data) setAssignees(assigneesRes.data as UserRow[])
+      const assignedIds = new Set(piece.assigned_to ?? [])
+      if (orgUsersRes.data) setAssignees((orgUsersRes.data as UserRow[]).filter(u => assignedIds.has(u.id)))
     }
 
     load()
@@ -117,23 +112,36 @@ export default function ApprovalPage() {
   async function handleSubmit() {
     if (!decision || submitting) return
     setSubmitting(true)
+    setSubmitError(null)
     const {
       data: { user: authUser },
     } = await supabase.auth.getUser()
 
+    let hadError = false
+
     if (decision === 'approved') {
-      await supabase.from('content_pieces').update({ status: 'approved' }).eq('id', id)
+      const { data, error } = await supabase.rpc('client_review_content', { p_id: id, p_action: 'approve' })
+      hadError = Boolean(error) || !data
     } else {
-      await Promise.all([
+      const [feedbackRes, statusRes] = await Promise.all([
         supabase.from('feedback_comments').insert({
-          content_piece_id: id,
+          content_id: id,
           author_id: authUser?.id,
+          author_name: user?.name ?? 'Client',
+          author_type: 'client',
           text: note,
           resolved: false,
           org_id: user?.org_id,
         }),
-        supabase.from('content_pieces').update({ status: 'in-design' }).eq('id', id),
+        supabase.rpc('client_review_content', { p_id: id, p_action: 'changes' }),
       ])
+      hadError = Boolean(feedbackRes.error) || Boolean(statusRes.error) || !statusRes.data
+    }
+
+    setSubmitting(false)
+    if (hadError) {
+      setSubmitError('Something went wrong sending your feedback. Please try again.')
+      return
     }
 
     setSubmitted(true)
@@ -142,7 +150,8 @@ export default function ApprovalPage() {
 
   if (!cp) return null
 
-  const tc = TYPE_CFG[cp.type as keyof typeof TYPE_CFG] ?? TYPE_CFG.graphic
+  const tc = CONTENT_TYPE_STYLE[cp.type as ContentType] ?? CONTENT_TYPE_STYLE.graphic
+  const isActionable = needsClientAction(cp.status)
 
   return (
     <main className="page-main relative flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">
@@ -151,20 +160,16 @@ export default function ApprovalPage() {
           ref={overlayRef}
           className={cn(
             'absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 px-10 text-center',
-            decision === 'approved' ? 'bg-success/5' : 'bg-lemon/10'
+            decision === 'approved' ? 'bg-success/5' : 'bg-wash'
           )}
         >
-          <div
-            className={cn(
-              'flex size-[72px] items-center justify-center rounded-full text-[2rem]',
-              decision === 'approved' ? 'bg-success text-white' : 'bg-lemon text-foreground'
-            )}
-          >
-            {decision === 'approved' ? '✓' : '✏️'}
-          </div>
+          <CelebrateCharacter
+            className="size-32"
+            title={decision === 'approved' ? 'Celebrating your approval' : 'Feedback sent'}
+          />
           <div>
             <h2 className="mb-1.5 text-[1.3rem] font-extrabold text-foreground">
-              {decision === 'approved' ? 'Approved!' : 'Revision Requested'}
+              {decision === 'approved' ? 'Approved, nice one!' : 'Thanks, feedback sent!'}
             </h2>
             <p className="text-[0.8rem] text-muted-foreground">
               {decision === 'approved'
@@ -175,22 +180,21 @@ export default function ApprovalPage() {
         </div>
       )}
 
-      <div className="flex shrink-0 items-center gap-3 bg-foreground px-5 py-[14px] text-background">
+      <div className="flex shrink-0 items-center gap-3 bg-dark px-5 py-[14px] text-dark-text">
         <Button
           variant="outline"
           size="icon-sm"
           onClick={() => router.back()}
-          className="border-white/10 bg-white/5 text-background/70 hover:bg-white/10 hover:text-background"
+          className="border-dark-hover bg-dark-raised text-dark-muted hover:bg-dark-hover hover:text-dark-text"
         >
           ←
         </Button>
         <div className="flex-1">
-          <p className="text-[0.6rem] uppercase tracking-[0.08em] text-background/50">Approval Request</p>
-          <p className="text-[0.95rem] font-extrabold leading-[1.2] text-background">{cp.title}</p>
+          <p className="text-[0.6rem] uppercase tracking-[0.08em] text-dark-muted">Approval Request</p>
+          <p className="text-[0.95rem] font-extrabold leading-[1.2] text-dark-text">{cp.title}</p>
         </div>
         <div
-          className="flex size-[34px] shrink-0 items-center justify-center rounded-[10px] bg-[var(--brand-color)] text-[11px] font-extrabold text-white"
-          style={brandStyle(client?.brand_color ?? 'hsl(25 82% 60%)')}
+          className="flex size-[34px] shrink-0 items-center justify-center rounded-[10px] bg-mint text-[11px] font-extrabold text-dark"
         >
           {client?.initials ?? '?'}
         </div>
@@ -198,17 +202,9 @@ export default function ApprovalPage() {
 
       <div ref={containerRef} className="flex flex-1 flex-col gap-3.5 px-4 py-4">
         <Card data-animate="approval-section" className="overflow-hidden py-0 shadow-none">
-          <div className="h-1 bg-[var(--type-color)]" style={{ '--type-color': tc.color } as CSSProperties} />
-
-          <div
-            className="flex h-[220px] flex-col items-center justify-center border-b border-border bg-[linear-gradient(135deg,var(--type-color)_0%,transparent_100%)]/10"
-            style={{ '--type-color': tc.color } as CSSProperties}
-          >
-            <div
-              className="mb-3 flex size-[72px] items-center justify-center rounded-[18px] bg-[var(--type-color)] text-[2rem]"
-              style={{ '--type-color': tc.color } as CSSProperties}
-            >
-              {tc.icon}
+          <div className="flex h-[220px] flex-col items-center justify-center border-b border-border bg-wash">
+            <div className="mb-3 flex size-[72px] items-center justify-center rounded-[18px] bg-primary text-primary-foreground">
+              <TypeIcon name={tc.icon} className="size-8" />
             </div>
             <p className="text-[0.72rem] font-semibold text-muted-foreground">{tc.label} Preview</p>
             <p className="text-[0.62rem] text-muted-foreground">Asset file would appear here</p>
@@ -216,11 +212,12 @@ export default function ApprovalPage() {
 
           <CardContent className="px-3.5 py-3.5">
             <div className="mb-2.5 flex flex-wrap gap-1.5">
-              <Badge variant="outline" className={tc.chipClass}>
+              <Badge variant="outline" className={cn('gap-1', tc.className)}>
+                <TypeIcon name={tc.icon} className="size-2.5" />
                 {tc.label}
               </Badge>
               {(cp.platforms ?? []).map(platform => (
-                <Badge key={platform} variant="outline" className="bg-muted text-muted-foreground">
+                <Badge key={platform} variant="outline" className="bg-wash text-muted-foreground">
                   {PLATFORM_ICONS[platform] ?? platform} {platform.charAt(0).toUpperCase() + platform.slice(1)}
                 </Badge>
               ))}
@@ -237,18 +234,6 @@ export default function ApprovalPage() {
             </CardHeader>
             <CardContent>
               <p className="text-[0.82rem] leading-[1.65] text-foreground/85">{cp.caption}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {cp.notes && (
-          <Card data-animate="approval-section" className="border-lemon/25 bg-lemon/10 shadow-none">
-            <CardContent className="flex gap-2.5 py-3.5">
-              <span className="shrink-0 text-base">📝</span>
-              <div>
-                <p className="mb-1 text-[0.6rem] font-bold uppercase tracking-[0.04em] text-lemon">Team Note</p>
-                <p className="text-[0.78rem] leading-[1.5] text-foreground/85">{cp.notes}</p>
-              </div>
             </CardContent>
           </Card>
         )}
@@ -274,40 +259,71 @@ export default function ApprovalPage() {
           </Card>
         )}
 
+        {!isActionable ? (
+          <Card data-animate="approval-section" className="border-success/30 bg-success/5 shadow-none">
+            <CardContent className="flex items-center gap-3 py-4">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-success text-success-foreground">
+                {cp.status === 'approved' || cp.status === 'scheduled' || cp.status === 'posted' ? (
+                  <StatusIcon name="check" className="size-4" />
+                ) : (
+                  <StatusIcon name="clock" className="size-4" />
+                )}
+              </span>
+              <div>
+                <p className="text-[0.82rem] font-extrabold text-foreground">
+                  {cp.status === 'approved' || cp.status === 'scheduled' || cp.status === 'posted'
+                    ? 'Already approved'
+                    : 'Not ready for review yet'}
+                </p>
+                <p className="text-[0.72rem] text-muted-foreground">
+                  {cp.status === 'approved' || cp.status === 'scheduled' || cp.status === 'posted'
+                    ? "You've already reviewed this piece — no action needed."
+                    : "Your team is still working on this — check back once it's ready."}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
         <Card data-animate="approval-section" className="shadow-none">
           <CardContent className="py-3.5">
             <p className="mb-3 text-[0.78rem] font-extrabold text-foreground">Your decision</p>
 
             <div className="mb-3 grid grid-cols-2 gap-2">
-              <button
+              <Button
+                type="button"
+                aria-pressed={decision === 'approved'}
                 onClick={() => {
                   setDecision('approved')
                   setShowNoteBox(false)
                 }}
                 className={cn(
-                  'rounded-[14px] border-2 px-3 py-3.5 text-center transition-all',
-                  decision === 'approved' ? 'border-success bg-success/5' : 'border-border bg-card'
+                  'h-auto min-h-11 flex-col gap-0.5 rounded-[14px] px-3 py-3.5 transition-all',
+                  decision === 'approved' && 'ring-2 ring-primary ring-offset-2 ring-offset-card'
                 )}
               >
-                <div className="mb-1 text-[1.4rem]">✓</div>
-                <p className={cn('text-[0.78rem] font-extrabold', decision === 'approved' ? 'text-success' : 'text-muted-foreground')}>Approve</p>
-                <p className="text-[0.62rem] text-muted-foreground">Looks great!</p>
-              </button>
+                <span className="flex items-center gap-1.5 text-[0.82rem] font-extrabold">
+                  <StatusIcon name="check" className="size-4" />
+                  Approve
+                </span>
+                <span className="text-[0.62rem] font-medium opacity-80">Looks great!</span>
+              </Button>
 
-              <button
+              <Button
+                type="button"
+                variant="outline"
+                aria-pressed={decision === 'revision'}
                 onClick={() => {
                   setDecision('revision')
                   setShowNoteBox(true)
                 }}
                 className={cn(
-                  'rounded-[14px] border-2 px-3 py-3.5 text-center transition-all',
-                  decision === 'revision' ? 'border-coral bg-coral/5' : 'border-border bg-card'
+                  'h-auto min-h-11 flex-col gap-0.5 rounded-[14px] border-2 px-3 py-3.5 transition-all',
+                  decision === 'revision' ? 'border-primary bg-wash text-primary' : 'border-border text-muted-foreground'
                 )}
               >
-                <div className="mb-1 text-[1.4rem]">✏️</div>
-                <p className={cn('text-[0.78rem] font-extrabold', decision === 'revision' ? 'text-coral' : 'text-muted-foreground')}>Request Changes</p>
-                <p className="text-[0.62rem] text-muted-foreground">Add feedback</p>
-              </button>
+                <span className="text-[0.82rem] font-extrabold">Request changes</span>
+                <span className="text-[0.62rem] font-medium">Add feedback</span>
+              </Button>
             </div>
 
             {showNoteBox && (
@@ -317,26 +333,25 @@ export default function ApprovalPage() {
                   value={note}
                   onChange={e => setNote(e.target.value)}
                   rows={3}
-                  className="resize-none bg-background leading-[1.6]"
+                  className="resize-none bg-card leading-[1.6]"
                 />
               </div>
+            )}
+
+            {submitError && (
+              <p className="mb-2 text-[0.72rem] font-semibold text-danger" role="alert">{submitError}</p>
             )}
 
             <Button
               onClick={handleSubmit}
               disabled={!decision || (decision === 'revision' && !note.trim()) || submitting}
-              className={cn(
-                'w-full text-[0.88rem] font-extrabold',
-                !decision && 'bg-muted text-muted-foreground hover:bg-muted',
-                decision === 'approved' && 'bg-success text-white hover:bg-success/85',
-                decision === 'revision' && 'bg-coral text-white hover:bg-coral/85',
-                ((decision === 'revision' && !note.trim()) || submitting) && 'opacity-50'
-              )}
+              className="w-full text-[0.88rem] font-extrabold"
             >
-              {!decision ? 'Select an option above' : decision === 'approved' ? 'Submit Approval ✓' : 'Send Feedback ->'}
+              {submitting ? 'Sending…' : !decision ? 'Select an option above' : decision === 'approved' ? 'Submit approval' : 'Send feedback'}
             </Button>
           </CardContent>
         </Card>
+        )}
 
         <div className="h-6" />
       </div>

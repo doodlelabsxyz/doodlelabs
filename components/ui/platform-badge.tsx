@@ -27,7 +27,7 @@ export function PlatformBadge({
         "inline-flex items-center rounded-full border px-s1.5 py-[2px] text-[0.6rem] font-semibold",
         subtle
           ? "bg-surface text-muted border-border"
-          : "bg-sky-tint text-sky border-sky/40",
+          : "bg-wash text-primary border-primary/40",
         className
       )}
       {...props}

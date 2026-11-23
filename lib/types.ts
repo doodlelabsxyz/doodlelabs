@@ -100,6 +100,13 @@ export type ContentStatus =
   | 'posted'
   | 'overdue'
 
+// 'client-review' is a defined status but nothing in the app ever writes it — the pipeline
+// board's stages stop at 'ready-for-review' and go straight to 'approved'. In practice
+// 'ready-for-review' IS the "waiting on the client" state. Always check both, not just one.
+export function needsClientAction(status: string): boolean {
+  return status === 'client-review' || status === 'ready-for-review'
+}
+
 export type Platform = 'instagram' | 'tiktok' | 'facebook' | 'linkedin'
 
 export type TaskStatus = 'pending' | 'in-progress' | 'done' | 'overdue'
@@ -254,7 +261,7 @@ export interface Client {
   platforms: Platform[]
   requiresClientApproval: boolean
   initials: string
-  contentThisMonth: number
+  contentQuota: number
   pendingApprovals: number
   monthlyRetainer?: number
   contactName?: string
@@ -331,7 +338,7 @@ export interface NavItem {
   icon:
     | 'home' | 'calendar' | 'planning' | 'pipeline' | 'team' | 'tasks'
     | 'upcoming' | 'done' | 'week' | 'notes' | 'notifications'
-    | 'ideas' | 'finance' | 'clients' | 'audit' | 'analytics'
+    | 'ideas' | 'finance' | 'clients' | 'audit' | 'analytics' | 'assets'
   dividerBefore?: boolean
 }
 
@@ -344,6 +351,7 @@ export const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { label: 'Ideas',     href: '/ideas',         icon: 'ideas' },
     { label: 'Team',      href: '/team',          icon: 'team',    dividerBefore: true },
     { label: 'Clients',   href: '/clients',       icon: 'clients' },
+    { label: 'Assets',    href: '/assets',        icon: 'assets' },
     { label: 'Finance',    href: '/finance',       icon: 'finance',       dividerBefore: true },
     { label: 'Analytics', href: '/analytics',     icon: 'analytics' },
     { label: 'Alerts',    href: '/notifications', icon: 'notifications' },
@@ -363,6 +371,7 @@ export const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { label: 'Done',      href: '/tasks/done',     icon: 'done' },
     { label: 'Calendar',  href: '/calendar',       icon: 'calendar', dividerBefore: true },
     { label: 'Ideas',     href: '/ideas',          icon: 'ideas' },
+    { label: 'Assets',    href: '/assets',         icon: 'assets' },
     { label: 'Alerts',    href: '/notifications',  icon: 'notifications' },
   ],
   videographer: [
@@ -371,6 +380,7 @@ export const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { label: 'Done',      href: '/tasks/done',     icon: 'done' },
     { label: 'Calendar',  href: '/calendar',       icon: 'calendar', dividerBefore: true },
     { label: 'Ideas',     href: '/ideas',          icon: 'ideas' },
+    { label: 'Assets',    href: '/assets',         icon: 'assets' },
     { label: 'Alerts',    href: '/notifications',  icon: 'notifications' },
   ],
   editor: [
@@ -379,6 +389,7 @@ export const NAV_BY_ROLE: Record<Role, NavItem[]> = {
     { label: 'Done',      href: '/tasks/done',     icon: 'done' },
     { label: 'Calendar',  href: '/calendar',       icon: 'calendar', dividerBefore: true },
     { label: 'Ideas',     href: '/ideas',          icon: 'ideas' },
+    { label: 'Assets',    href: '/assets',         icon: 'assets' },
     { label: 'Alerts',    href: '/notifications',  icon: 'notifications' },
   ],
   poster: [

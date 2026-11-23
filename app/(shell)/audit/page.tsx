@@ -6,9 +6,12 @@ import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { UserAvatar } from '@/components/ui/user-avatar'
+import { PlanUpgradeWall } from '@/components/PlanUpgradeWall'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/supabase/useUser'
+import { usePlanGate } from '@/lib/hooks/usePlanGate'
 import { cn } from '@/lib/utils'
 
 type AuditRow = {
@@ -36,17 +39,17 @@ const ACTION_CFG: Record<
 > = {
   INSERT: {
     label: 'Created',
-    badgeClass: 'bg-success/15 text-success',
+    badgeClass: 'bg-status-done text-status-done-fg',
     diffTextClass: 'text-success',
   },
   UPDATE: {
     label: 'Updated',
-    badgeClass: 'bg-coral/15 text-coral',
-    diffTextClass: 'text-coral',
+    badgeClass: 'bg-wash text-primary',
+    diffTextClass: 'text-primary',
   },
   DELETE: {
     label: 'Deleted',
-    badgeClass: 'bg-danger/15 text-danger',
+    badgeClass: 'bg-status-late text-status-late-fg',
     diffTextClass: 'text-danger',
   },
 }
@@ -82,7 +85,7 @@ function FilterChip({
       className={cn(
         'rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap transition-colors',
         active
-          ? activeClassName || 'bg-coral text-white'
+          ? activeClassName || 'bg-mint text-dark'
           : 'bg-transparent text-dark-muted hover:bg-white/8 hover:text-dark-text'
       )}
     >
@@ -142,6 +145,7 @@ function DiffView({
 export default function AuditPage() {
   const router = useRouter()
   const { user } = useUser()
+  const { allowed: auditAllowed, requiredPlan, loading: gateLoading } = usePlanGate('hasAudit')
 
   const [logs, setLogs] = useState<AuditRow[] | null>(null)
   const [tableFilter, setTableFilter] = useState<(typeof ALL_TABLES)[number]>('all')
@@ -149,12 +153,15 @@ export default function AuditPage() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [page, setPage] = useState(0)
   const PAGE_SIZE = 40
-  const loading = logs === null
+  const [error, setError] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
+  const loading = logs === null && !error
 
   useEffect(() => {
     let ignore = false
 
     async function load() {
+      setError(false)
       const supabase = createClient()
 
       let q = supabase
@@ -166,8 +173,12 @@ export default function AuditPage() {
       if (tableFilter !== 'all') q = q.eq('table_name', tableFilter)
       if (actionFilter !== 'all') q = q.eq('action', actionFilter)
 
-      const { data } = await q
+      const { data, error: qErr } = await q.then(r => r, () => ({ data: null, error: new Error('network') }))
       if (ignore) return
+      if (qErr) {
+        setError(true)
+        return
+      }
 
       setLogs(
         ((data || []).map(r => ({
@@ -182,11 +193,13 @@ export default function AuditPage() {
     return () => {
       ignore = true
     }
-  }, [tableFilter, actionFilter, page])
+  }, [tableFilter, actionFilter, page, reloadKey])
 
   useEffect(() => {
     if (user && user.role !== 'admin') router.replace('/dashboard')
   }, [user, router])
+
+  if (!gateLoading && !auditAllowed) return <PlanUpgradeWall feature="Audit Log" requiredPlan={requiredPlan} />
 
   return (
     <main className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto">
@@ -236,9 +249,28 @@ export default function AuditPage() {
       </section>
 
       <div className="flex flex-1 flex-col gap-2 p-4">
-        {loading ? (
-          <Card className="shadow-none">
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">Loading...</CardContent>
+        {gateLoading || loading ? (
+          <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading audit log">
+            {Array.from({ length: 8 }, (_, i) => (
+              <Skeleton key={i} className="h-[60px] w-full rounded-xl" />
+            ))}
+          </div>
+        ) : error || !logs ? (
+          <Card className="border border-dashed border-border bg-card shadow-none" role="alert">
+            <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+              <p className="text-sm font-semibold text-foreground">Couldn&apos;t load the audit log</p>
+              <p className="text-xs text-muted-foreground">Something went wrong. Please try again.</p>
+              <Button
+                variant="outline"
+                className="rounded-full"
+                onClick={() => {
+                  setError(false)
+                  setReloadKey(k => k + 1)
+                }}
+              >
+                Try again
+              </Button>
+            </CardContent>
           </Card>
         ) : logs.length === 0 ? (
           <Card className="border border-dashed border-border bg-card shadow-none">
@@ -263,7 +295,7 @@ export default function AuditPage() {
                   {log.actor && log.actor_id ? (
                     <UserAvatar userId={log.actor_id} name={log.actor.name} size="sm" />
                   ) : (
-                    <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-ghost text-[0.6rem] font-extrabold text-white">
+                    <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-ghost text-[0.6rem] font-extrabold text-background">
                       ?
                     </div>
                   )}
@@ -306,7 +338,7 @@ export default function AuditPage() {
           })
         )}
 
-        {logs && logs.length > 0 && (
+        {!error && logs && logs.length > 0 && (
           <div className="flex items-center justify-center gap-2 py-3">
             <Button
               variant="outline"

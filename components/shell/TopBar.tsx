@@ -6,6 +6,7 @@ import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { useTheme } from 'next-themes'
 
+import { WavingCharacter } from '@/components/illustrations'
 import { Button } from '@/components/ui/button'
 
 gsap.registerPlugin(useGSAP)
@@ -64,7 +65,7 @@ function Bell({ count }: { count: number }) {
             textAnchor="middle"
             fontSize="9"
             fontWeight="700"
-            fill="hsl(42, 30%, 99%)"
+            fill="var(--color-danger-foreground)"
             fontFamily="var(--font-sans)"
           >
             {count > 9 ? '9+' : count}
@@ -155,9 +156,12 @@ export function TopBar({
 }: TopBarProps) {
   return (
     <header className="mb-s3 flex w-full items-center justify-between bg-card px-s3 pt-s3">
-      <div>
-        <p className="text-xs font-medium text-muted-foreground">{greeting}</p>
-        <p className="text-md leading-tight font-bold text-primary">{userName}</p>
+      <div className="flex items-center gap-s2">
+        <WavingCharacter className="hidden size-10 shrink-0 sm:block" />
+        <div>
+          <p className="text-xs font-medium text-muted-foreground">{greeting}</p>
+          <p className="text-md leading-tight font-bold text-primary">{userName}</p>
+        </div>
       </div>
 
       <div className="flex items-center gap-s2">

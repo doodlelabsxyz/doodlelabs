@@ -1,24 +1,26 @@
 'use client'
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { useRouter } from 'next/navigation'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { FilterPill } from '@/components/ui/filter-pill'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { TypeIcon } from '@/components/ui/type-icon'
 import { UserAvatar } from '@/components/ui/user-avatar'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/supabase/useUser'
 import { cn } from '@/lib/utils'
-import type { ContentStatus } from '@/lib/types'
+import { CONTENT_TYPE_STYLE } from '@/lib/color-map'
+import { needsClientAction, type ContentStatus, type ContentType } from '@/lib/types'
 
 gsap.registerPlugin(useGSAP)
 
-type ClientRow = { id: string; name: string; initials: string; brand_color: string; industry: string }
+type ClientRow = { id: string; name: string; initials: string; industry: string }
 type ContentRow = {
   id: string
   title: string
@@ -32,24 +34,13 @@ type ContentRow = {
 }
 type UserRow = { id: string; name: string }
 
-const TYPE_CFG = {
-  graphic: { label: 'Graphic', color: 'hsl(14 72% 62%)', chipClass: 'border-coral/25 bg-coral/10 text-coral' },
-  video: { label: 'Video', color: 'hsl(40 95% 52%)', chipClass: 'border-lemon/30 bg-lemon/15 text-foreground' },
-  reel: { label: 'Reel', color: 'hsl(161 58% 44%)', chipClass: 'border-mint/25 bg-mint/10 text-mint' },
-  story: { label: 'Story', color: 'hsl(268 60% 68%)', chipClass: 'border-lavender/25 bg-lavender/10 text-lavender' },
-}
-
-const STATUS_CFG: Record<ContentStatus, { label: string; chipClass: string }> = {
-  planned: { label: 'Planned', chipClass: 'border-sky/20 bg-sky-tint text-sky' },
-  'brief-ready': { label: 'In Progress', chipClass: 'border-sky/20 bg-sky-tint text-sky' },
-  'in-design': { label: 'In Progress', chipClass: 'border-sky/20 bg-sky-tint text-sky' },
-  'in-editing': { label: 'In Progress', chipClass: 'border-sky/20 bg-sky-tint text-sky' },
-  'ready-for-review': { label: 'Ready for Review', chipClass: 'border-lemon/25 bg-lemon/10 text-lemon' },
-  'client-review': { label: 'Awaiting Your Review', chipClass: 'border-coral/25 bg-coral/10 text-coral' },
-  approved: { label: 'Approved', chipClass: 'border-success/20 bg-success/10 text-success' },
-  scheduled: { label: 'Scheduled', chipClass: 'border-success/20 bg-success/10 text-success' },
-  posted: { label: 'Posted', chipClass: 'border-mint/20 bg-mint/10 text-mint' },
-  overdue: { label: 'Overdue', chipClass: 'border-danger/20 bg-danger/10 text-danger' },
+// Client-friendly wording only; colour/icon come from lib/color-map via <StatusBadge>.
+const CLIENT_STATUS_LABEL: Record<string, string> = {
+  'brief-ready': 'In progress',
+  'in-design': 'In progress',
+  'in-editing': 'In progress',
+  'ready-for-review': 'Ready for review',
+  'client-review': 'Awaiting your review',
 }
 
 const PLATFORM_ICONS: Record<string, string> = {
@@ -69,10 +60,6 @@ function formatDate(s: string) {
   if (diff === -1) return 'Yesterday'
   if (diff > 0 && diff < 7) return `In ${diff} days`
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
-function brandStyle(color?: string): CSSProperties | undefined {
-  return color ? ({ '--brand-color': color } as CSSProperties) : undefined
 }
 
 export default function ClientPortalPage() {
@@ -96,11 +83,11 @@ export default function ClientPortalPage() {
         const { data: cu } = await supabase.from('client_users').select('client_id').eq('user_id', currentUser.id).single()
         if (cu?.client_id) {
           setClientId(cu.client_id)
-          const { data: c } = await supabase.from('clients').select('id, name, initials, brand_color, industry').eq('id', cu.client_id)
+          const { data: c } = await supabase.from('clients').select('id, name, initials, industry').eq('id', cu.client_id)
           if (c) setClients(c)
         }
       } else {
-        const { data: c } = await supabase.from('clients').select('id, name, initials, brand_color, industry').order('name')
+        const { data: c } = await supabase.from('clients').select('id, name, initials, industry').order('name')
         if (c) {
           setClients(c)
           const stored = sessionStorage.getItem('clientId')
@@ -116,11 +103,14 @@ export default function ClientPortalPage() {
     if (!clientId) return
     Promise.all([
       supabase
-        .from('content_pieces')
+        .from('content_pieces_client')
         .select('id, title, type, status, caption, scheduled_date, platforms, assigned_to, client_id')
         .eq('client_id', clientId)
         .order('scheduled_date'),
-      supabase.from('users').select('id, name').neq('role', 'client'),
+      // Plain `users` SELECT is locked to self+admin (protects salary/email/phone),
+      // which silently returns nothing for a client account — go through the
+      // safe org-wide name/role lookup instead. See get_org_users_safe().
+      supabase.rpc('get_org_users_safe').neq('role', 'client'),
     ]).then(([contentRes, usersRes]) => {
       if (contentRes.data) setContent(contentRes.data)
       if (usersRes.data) setUsers(usersRes.data)
@@ -128,7 +118,7 @@ export default function ClientPortalPage() {
   }, [clientId, supabase])
 
   const client = clients.find(c => c.id === clientId)
-  const pendingApproval = content.filter(c => c.status === 'client-review' || c.status === 'ready-for-review')
+  const pendingApproval = content.filter(c => needsClientAction(c.status))
   const approved = content.filter(c => c.status === 'approved' || c.status === 'scheduled')
   const posted = content.filter(c => c.status === 'posted')
 
@@ -154,7 +144,8 @@ export default function ClientPortalPage() {
 
   return (
     <main className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">
-      <div className="bg-foreground px-5 py-5 pb-4 text-background">
+      <div className="bg-dark px-5 py-5 pb-4 text-dark-text md:px-8">
+       <div className="mx-auto w-full max-w-4xl">
         {user?.role !== 'client' && clients.length > 1 && (
           <div className="mb-4 flex gap-1.5 overflow-x-auto pb-0.5">
             {clients.map(c => (
@@ -167,10 +158,9 @@ export default function ClientPortalPage() {
                   sessionStorage.setItem('clientId', c.id)
                 }}
                 className={cn(
-                  'shrink-0 border-white/10 bg-white/5 text-background/70 hover:bg-white/10 hover:text-background',
-                  clientId === c.id && 'border-[var(--brand-color)] bg-[var(--brand-color)] text-white hover:bg-[var(--brand-color)] hover:text-white'
+                  'shrink-0 border-dark-hover bg-dark-raised text-dark-muted hover:bg-dark-hover hover:text-dark-text',
+                  clientId === c.id && 'border-mint bg-mint text-dark hover:bg-mint hover:text-dark'
                 )}
-                style={clientId === c.id ? brandStyle(c.brand_color) : undefined}
               >
                 {c.name}
               </Button>
@@ -180,18 +170,17 @@ export default function ClientPortalPage() {
 
         <div className="mb-4 flex items-center gap-3.5">
           <div
-            className="flex size-[52px] shrink-0 items-center justify-center rounded-[14px] bg-[var(--brand-color)] text-base font-extrabold text-white"
-            style={brandStyle(client?.brand_color ?? 'hsl(25 82% 60%)')}
+            className="flex size-[52px] shrink-0 items-center justify-center rounded-[14px] bg-mint text-base font-extrabold text-dark"
           >
             {client?.initials ?? '?'}
           </div>
           <div className="flex-1">
-            <p className="mb-0.5 text-[0.6rem] uppercase tracking-[0.08em] text-background/50">Client Portal</p>
-            <h1 className="text-[1.2rem] font-extrabold leading-none text-background">{client?.name ?? '-'}</h1>
-            <p className="mt-0.5 text-[0.68rem] text-background/50">{client?.industry ?? ''}</p>
+            <p className="mb-0.5 text-[0.6rem] uppercase tracking-[0.08em] text-dark-muted">Client Portal</p>
+            <h1 className="text-[1.2rem] font-extrabold leading-none text-dark-text">{client?.name ?? '-'}</h1>
+            <p className="mt-0.5 text-[0.68rem] text-dark-muted">{client?.industry ?? ''}</p>
           </div>
           {pendingApproval.length > 0 && (
-            <div className="shrink-0 rounded-[10px] bg-coral px-3 py-1.5 text-center text-white">
+            <div className="shrink-0 rounded-[10px] bg-mint px-3 py-1.5 text-center text-dark">
               <p className="text-[1.2rem] font-extrabold leading-none">{pendingApproval.length}</p>
               <p className="mt-px text-[0.58rem]">awaiting you</p>
             </div>
@@ -200,14 +189,14 @@ export default function ClientPortalPage() {
 
         <div className="mb-4 grid grid-cols-4 gap-2">
           {[
-            { n: content.length, label: 'This Month', color: 'text-sky' },
-            { n: pendingApproval.length, label: 'Needs Review', color: 'text-coral' },
-            { n: approved.length, label: 'Approved', color: 'text-success' },
+            { n: content.length, label: 'This Month', color: 'text-mint' },
+            { n: pendingApproval.length, label: 'Needs Review', color: 'text-mint' },
+            { n: approved.length, label: 'Approved', color: 'text-mint' },
             { n: posted.length, label: 'Posted', color: 'text-mint' },
           ].map(stat => (
-            <div key={stat.label} className="rounded-[10px] bg-white/5 px-2 py-2 text-center">
+            <div key={stat.label} className="rounded-[10px] bg-dark-raised px-2 py-2 text-center">
               <p className={cn('text-[1.1rem] font-extrabold leading-none', stat.color)}>{stat.n}</p>
-              <p className="mt-0.5 text-[0.56rem] text-background/45">{stat.label}</p>
+              <p className="mt-0.5 text-[0.56rem] text-dark-muted">{stat.label}</p>
             </div>
           ))}
         </div>
@@ -224,26 +213,30 @@ export default function ClientPortalPage() {
               active={filter === item.key}
               onClick={() => setFilter(item.key)}
               className={cn(
-                'shrink-0 border-white/10 bg-white/5 text-background/65 hover:bg-white/10 hover:text-background',
-                filter === item.key && 'border-[var(--brand-color)] bg-[var(--brand-color)] text-white hover:bg-[var(--brand-color)]'
+                'shrink-0 border-dark-hover bg-dark-raised text-dark-muted hover:bg-dark-hover hover:text-dark-text',
+                filter === item.key && 'border-mint bg-mint text-dark hover:bg-mint'
               )}
-              style={filter === item.key ? brandStyle(client?.brand_color ?? 'hsl(25 82% 60%)') : undefined}
             >
               {item.label}
             </FilterPill>
           ))}
         </div>
+       </div>
       </div>
 
-      <div ref={containerRef} className="flex-1 px-4 py-4">
+      <div ref={containerRef} className="mx-auto w-full max-w-4xl flex-1 px-4 py-4 md:px-8 md:py-6">
         {filter === 'all' && pendingApproval.length > 0 && (
-          <Card className="mb-3.5 border-coral/25 bg-coral/5 py-0 shadow-none">
-            <CardContent className="flex items-center gap-2.5 px-3.5 py-3">
-              <div className="size-2 shrink-0 rounded-full bg-coral" />
-              <p className="flex-1 text-[0.78rem] font-semibold text-coral/90">
+          <Card className="mb-3.5 border-primary bg-primary py-0 text-primary-foreground shadow-none md:mb-5">
+            <CardContent className="flex items-center gap-2.5 px-3.5 py-3 md:px-5 md:py-4">
+              <div className="size-2 shrink-0 rounded-full bg-primary-foreground" />
+              <p className="flex-1 text-[0.82rem] font-bold">
                 {pendingApproval.length} piece{pendingApproval.length > 1 ? 's' : ''} waiting for your approval
               </p>
-              <Button size="sm" className="bg-coral text-white hover:bg-coral/85" onClick={() => setFilter('pending')}>
+              <Button
+                size="sm"
+                className="bg-primary-foreground font-bold text-primary hover:bg-primary-foreground/90"
+                onClick={() => setFilter('pending')}
+              >
                 Review
               </Button>
             </CardContent>
@@ -258,11 +251,11 @@ export default function ClientPortalPage() {
             className="border-border bg-card py-12"
           />
         ) : (
-          <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col gap-2.5 md:grid md:grid-cols-2 md:items-start md:gap-4">
             {filtered.map(cp => {
-              const tc = TYPE_CFG[cp.type as keyof typeof TYPE_CFG] ?? TYPE_CFG.graphic
-              const sc = STATUS_CFG[cp.status as ContentStatus] ?? STATUS_CFG.planned
-              const needsAction = cp.status === 'client-review' || cp.status === 'ready-for-review'
+              const ts = CONTENT_TYPE_STYLE[cp.type as ContentType] ?? CONTENT_TYPE_STYLE.graphic
+              const isDone = cp.status === 'approved' || cp.status === 'scheduled' || cp.status === 'posted'
+              const needsAction = needsClientAction(cp.status)
               const assignees = (cp.assigned_to ?? []).map(id => userMap.get(id)).filter(Boolean) as UserRow[]
 
               return (
@@ -272,32 +265,32 @@ export default function ClientPortalPage() {
                   onClick={() => needsAction && router.push(`/client/approval/${cp.id}`)}
                   className={cn(
                     'overflow-hidden py-0 transition-transform duration-150',
-                    needsAction ? 'cursor-pointer border-coral/40 shadow-sm hover:-translate-y-0.5' : 'shadow-none'
+                    needsAction ? 'cursor-pointer border-primary shadow-sm hover:-translate-y-0.5' : isDone ? 'border-success/40 shadow-none' : 'shadow-none'
                   )}
                 >
-                  <div className="h-1 bg-[var(--type-color)]" style={{ '--type-color': tc.color } as CSSProperties} />
                   <CardContent className="px-3.5 py-3.5">
                     <div className="mb-2.5 flex items-start gap-2.5">
                       <div className="min-w-0 flex-1">
                         <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                          <Badge variant="outline" className={tc.chipClass}>
-                            {tc.label}
-                          </Badge>
-                          <Badge variant="outline" className={sc.chipClass}>
-                            {sc.label}
-                          </Badge>
+                          <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[0.65rem] font-semibold leading-none', ts.className)}>
+                            <TypeIcon name={ts.icon} className="size-2.5" />
+                            {ts.label}
+                          </span>
+                          <StatusBadge status={cp.status as ContentStatus}>
+                            {CLIENT_STATUS_LABEL[cp.status]}
+                          </StatusBadge>
                         </div>
                         <p className="text-[0.9rem] font-extrabold leading-[1.3] text-foreground">{cp.title}</p>
                       </div>
                       {needsAction && (
-                        <div className="shrink-0 rounded-[10px] bg-coral px-2.5 py-1 text-[0.65rem] font-bold text-white">
+                        <div className="shrink-0 rounded-[10px] bg-primary px-2.5 py-1 text-[0.65rem] font-bold text-primary-foreground">
                           Review {'->'}
                         </div>
                       )}
                     </div>
 
                     {cp.caption && (
-                      <p className="mb-2.5 line-clamp-2 rounded-lg bg-background px-2 py-2 text-[0.72rem] leading-[1.5] text-muted-foreground">
+                      <p className="mb-2.5 line-clamp-2 rounded-lg bg-wash px-2 py-2 text-[0.72rem] leading-[1.5] text-muted-foreground">
                         {cp.caption}
                       </p>
                     )}
@@ -309,7 +302,7 @@ export default function ClientPortalPage() {
 
                       <div className="ml-auto flex gap-1">
                         {(cp.platforms ?? []).map(p => (
-                          <span key={p} className="rounded px-1.5 py-0.5 text-[0.58rem] font-bold text-muted-foreground bg-muted">
+                          <span key={p} className="rounded px-1.5 py-0.5 text-[0.58rem] font-bold text-muted-foreground bg-wash">
                             {PLATFORM_ICONS[p] ?? p}
                           </span>
                         ))}

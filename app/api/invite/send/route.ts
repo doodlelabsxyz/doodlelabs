@@ -1,5 +1,6 @@
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { NextResponse, type NextRequest } from 'next/server'
+import { rateLimit, tooMany } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   const { email, role } = await request.json()
@@ -12,6 +13,9 @@ export async function POST(request: NextRequest) {
   const userSupabase = await createClient()
   const { data: { user } } = await userSupabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
+
+  const rl = rateLimit(`invite-send:${user.id}`, 20, 60 * 60 * 1000)
+  if (!rl.ok) return tooMany(rl.retryAfter)
 
   const { data: profile } = await userSupabase.from('users').select('org_id, role').eq('id', user.id).single()
   if (!profile?.org_id) return NextResponse.json({ error: 'No workspace found.' }, { status: 400 })

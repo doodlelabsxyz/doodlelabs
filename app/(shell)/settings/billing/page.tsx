@@ -1,12 +1,13 @@
 'use client'
 
+import { useToast } from '@/components/ui/toaster'
 import { useOrg } from '@/lib/supabase/OrgContext'
 import { PLAN_LIMITS, type OrgPlan } from '@/lib/types'
 
-const PLANS: { key: OrgPlan; name: string; price: number; color: string }[] = [
-  { key:'starter', name:'Starter', price:49,  color:'hsl(200,72%,50%)' },
-  { key:'growth',  name:'Growth',  price:99,  color:'hsl(25,82%,60%)'  },
-  { key:'pro',     name:'Pro',     price:199, color:'hsl(270,72%,60%)' },
+const PLANS: { key: OrgPlan; name: string; price: number }[] = [
+  { key:'starter', name:'Starter', price:49 },
+  { key:'growth',  name:'Growth',  price:99 },
+  { key:'pro',     name:'Pro',     price:199 },
 ]
 
 const FEATURES = [
@@ -21,111 +22,123 @@ const FEATURES = [
 
 export default function BillingPage() {
   const { org } = useOrg()
+  const { info } = useToast()
   const currentPlan = org?.plan ?? 'starter'
   const planStatus  = org?.plan_status ?? 'trialing'
 
-  const statusColor = planStatus === 'active'   ? 'hsl(140,60%,40%)' :
-                      planStatus === 'trialing'  ? 'hsl(50,72%,40%)'  :
-                      planStatus === 'past_due'  ? 'hsl(4,72%,50%)'   :
-                                                   'hsl(24,8%,50%)'
+  const statusClass =
+    planStatus === 'active'   ? 'bg-status-done text-status-done-fg' :
+    planStatus === 'trialing' ? 'bg-status-active text-status-active-fg' :
+    planStatus === 'past_due' ? 'bg-status-late text-status-late-fg' :
+                                'bg-status-neutral text-status-neutral-fg'
+  const currentIdx = PLANS.findIndex(p => p.key === currentPlan)
 
   return (
-    <main className="page-main" style={{ flex:1, minWidth:0, overflowY:'auto', background:'hsl(42,30%,97%)' }}>
+    <main className="page-main min-w-0 flex-1 overflow-y-auto bg-background">
 
       {/* Header */}
-      <div style={{ background:'#0F1A14', padding:'18px 20px 16px', flexShrink:0 }}>
-        <p style={{ fontSize:'0.656rem', color:'hsl(140,7%,48%)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:'1px' }}>Account</p>
-        <h1 style={{ fontSize:'1.167rem', fontWeight:800, color:'hsl(42,22%,84%)', lineHeight:1 }}>Billing</h1>
+      <div className="shrink-0 bg-dark px-5 pt-[18px] pb-4">
+        <p className="mb-px text-2xs uppercase tracking-[0.08em] text-dark-muted">Account</p>
+        <h1 className="text-md font-extrabold leading-none text-dark-text">Billing</h1>
       </div>
 
-      <div style={{ padding:'16px', display:'flex', flexDirection:'column', gap:'14px', maxWidth:'600px' }}>
+      <div className="flex max-w-[600px] flex-col gap-3.5 p-4">
 
         {/* Current plan card */}
-        <div style={{ background:'#fff', borderRadius:'18px', border:'1px solid hsl(38,14%,90%)', overflow:'hidden' }}>
-          <div style={{ padding:'18px 20px', borderBottom:'1px solid hsl(38,14%,92%)' }}>
-            <p style={{ fontSize:'0.6rem', fontWeight:700, color:'hsl(24,8%,60%)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:'10px' }}>Current plan</p>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div className="overflow-hidden rounded-[18px] border border-border bg-card">
+          <div className="border-b border-border px-5 py-[18px]">
+            <p className="mb-2.5 text-[0.65rem] font-bold uppercase tracking-[0.06em] text-muted-foreground">Current plan</p>
+            <div className="flex items-center justify-between">
               <div>
-                <p style={{ fontSize:'1.3rem', fontWeight:800, color:'hsl(24,20%,11%)', textTransform:'capitalize', letterSpacing:'-0.01em' }}>
+                <p className="text-[1.3rem] font-extrabold capitalize tracking-[-0.01em] text-foreground">
                   {currentPlan}
-                  <span style={{ marginLeft:'10px', fontSize:'0.65rem', padding:'3px 10px', borderRadius:'9999px', background: `${statusColor}18`, color:statusColor, fontWeight:700, textTransform:'capitalize', verticalAlign:'middle' }}>
+                  <span className={`ml-2.5 rounded-full px-2.5 py-[3px] align-middle text-[0.65rem] font-bold capitalize ${statusClass}`}>
                     {planStatus.replace('_', ' ')}
                   </span>
                 </p>
                 {org?.trial_ends_at && planStatus === 'trialing' && (
-                  <p style={{ fontSize:'0.72rem', color:'hsl(24,8%,52%)', marginTop:'4px' }}>
+                  <p className="mt-1 text-xs text-muted-foreground">
                     Trial ends {new Date(org.trial_ends_at).toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' })}
                   </p>
                 )}
               </div>
-              <p style={{ fontSize:'1.4rem', fontWeight:800, color:'hsl(24,20%,11%)' }}>
+              <p className="text-[1.4rem] font-extrabold text-foreground">
                 ${PLANS.find(p => p.key === currentPlan)?.price ?? 0}
-                <span style={{ fontSize:'0.7rem', fontWeight:500, color:'hsl(24,8%,55%)' }}>/mo</span>
+                <span className="text-xs font-medium text-muted-foreground">/mo</span>
               </p>
             </div>
           </div>
 
           {/* Coming soon notice */}
-          <div style={{ padding:'14px 20px', background:'hsl(200,60%,97%)', display:'flex', alignItems:'center', gap:'10px' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink:0 }}>
-              <circle cx="12" cy="12" r="10" stroke="hsl(200,72%,50%)" strokeWidth="1.8"/>
-              <path d="M12 8v4M12 16h.01" stroke="hsl(200,72%,50%)" strokeWidth="1.8" strokeLinecap="round"/>
+          <div className="flex items-center gap-2.5 bg-wash px-5 py-3.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="shrink-0 text-primary">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8"/>
+              <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
-            <p style={{ fontSize:'0.75rem', color:'hsl(200,40%,40%)', lineHeight:1.5 }}>
+            <p className="text-xs leading-normal text-primary">
               <strong>Billing is coming soon.</strong> You&apos;re on a free trial. We&apos;ll notify you before any charges occur.
             </p>
           </div>
         </div>
 
         {/* Plan comparison */}
-        <div style={{ background:'#fff', borderRadius:'18px', border:'1px solid hsl(38,14%,90%)', overflow:'hidden' }}>
-          <p style={{ padding:'14px 20px 10px', fontSize:'0.6rem', fontWeight:700, color:'hsl(24,8%,60%)', textTransform:'uppercase', letterSpacing:'0.06em' }}>All plans</p>
+        <div className="overflow-hidden rounded-[18px] border border-border bg-card">
+          <p className="px-5 pt-3.5 pb-2.5 text-[0.65rem] font-bold uppercase tracking-[0.06em] text-muted-foreground">All plans</p>
 
           {/* Plan headers */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', borderBottom:'1px solid hsl(38,14%,92%)', padding:'0 20px 12px' }}>
+          <div className="grid grid-cols-4 gap-1 border-b border-border px-5 pb-3">
             <div />
-            {PLANS.map(plan => (
-              <div key={plan.key} style={{ textAlign:'center' }}>
-                <p style={{ fontSize:'0.75rem', fontWeight:800, color: plan.key === currentPlan ? plan.color : 'hsl(24,20%,20%)' }}>
-                  {plan.name}
-                  {plan.key === currentPlan && (
-                    <span style={{ marginLeft:'4px', fontSize:'0.55rem', padding:'2px 6px', borderRadius:'9999px', background:`${plan.color}20`, color:plan.color }}>
-                      Current
-                    </span>
+            {PLANS.map(plan => {
+              const isCurrent = plan.key === currentPlan
+              return (
+                <div
+                  key={plan.key}
+                  className={`rounded-xl px-1 py-1.5 text-center ${isCurrent ? 'border-2 border-primary' : 'border-2 border-transparent'}`}
+                >
+                  <p className={`text-xs font-extrabold ${isCurrent ? 'text-primary' : 'text-foreground'}`}>{plan.name}</p>
+                  {isCurrent && (
+                    <span className="mt-0.5 inline-block rounded-full bg-wash px-1.5 py-0.5 text-[0.6rem] font-bold text-primary">Current</span>
                   )}
-                </p>
-                <p style={{ fontSize:'0.85rem', fontWeight:800, color:'hsl(24,20%,11%)', marginTop:'2px' }}>
-                  ${plan.price}<span style={{ fontSize:'0.6rem', fontWeight:500, color:'hsl(24,8%,55%)' }}>/mo</span>
-                </p>
-              </div>
-            ))}
+                  <p className="mt-0.5 text-[0.85rem] font-extrabold text-foreground">
+                    ${plan.price}<span className="text-[0.65rem] font-medium text-muted-foreground">/mo</span>
+                  </p>
+                </div>
+              )
+            })}
           </div>
 
           {/* Feature rows */}
           {FEATURES.map((f, i) => (
-            <div key={f.label} style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', padding:'10px 20px', borderBottom: i < FEATURES.length - 1 ? '1px solid hsl(38,14%,94%)' : 'none', alignItems:'center' }}>
-              <span style={{ fontSize:'0.72rem', color:'hsl(24,10%,44%)', fontWeight:500 }}>{f.label}</span>
+            <div
+              key={f.label}
+              className={`grid grid-cols-4 items-center px-5 py-2.5 ${i < FEATURES.length - 1 ? 'border-b border-border' : ''}`}
+            >
+              <span className="text-xs font-medium text-muted-foreground">{f.label}</span>
               {f.keys.map((val, j) => (
-                <span key={j} style={{ textAlign:'center', fontSize:'0.75rem', fontWeight: val === '✓' ? 700 : 500, color: val === '✓' ? 'hsl(140,60%,40%)' : val === '—' ? 'hsl(24,8%,70%)' : 'hsl(24,20%,20%)' }}>
-                  {val}
+                <span
+                  key={j}
+                  className={`text-center text-xs ${val === '✓' ? 'font-bold text-success' : val === '—' ? 'font-medium text-muted-foreground' : 'font-medium text-foreground'}`}
+                >
+                  {val === '✓' ? <><span aria-hidden="true">✓</span><span className="sr-only">Included</span></> : val === '—' ? <><span aria-hidden="true">—</span><span className="sr-only">Not included</span></> : val}
                 </span>
               ))}
             </div>
           ))}
 
           {/* Upgrade buttons */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', padding:'14px 20px', borderTop:'1px solid hsl(38,14%,92%)', gap:'8px' }}>
+          <div className="grid grid-cols-4 gap-2 border-t border-border px-5 py-3.5">
             <div />
-            {PLANS.map(plan => (
-              <div key={plan.key} style={{ display:'flex', justifyContent:'center' }}>
+            {PLANS.map((plan, idx) => (
+              <div key={plan.key} className="flex justify-center">
                 {plan.key === currentPlan ? (
-                  <span style={{ fontSize:'0.65rem', color:'hsl(24,8%,60%)', fontWeight:600 }}>Current</span>
+                  <span className="text-[0.65rem] font-semibold text-muted-foreground">Current</span>
                 ) : (
                   <button
-                    onClick={() => alert('Billing integration coming soon!')}
-                    style={{ padding:'7px 14px', borderRadius:'9999px', background:`${plan.color}18`, color:plan.color, fontWeight:700, fontSize:'0.68rem', border:`1px solid ${plan.color}40`, cursor:'pointer' }}
+                    type="button"
+                    onClick={() => info('Online billing is coming soon — contact us to change your plan')}
+                    className="min-h-11 cursor-pointer rounded-full border border-primary/40 bg-wash px-3.5 text-[0.68rem] font-bold text-primary hover:bg-sage focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
-                    {PLANS.indexOf(plan) > PLANS.findIndex(p => p.key === currentPlan) ? 'Upgrade' : 'Downgrade'}
+                    {idx > currentIdx ? 'Upgrade' : 'Downgrade'}
                   </button>
                 )}
               </div>
@@ -134,14 +147,13 @@ export default function BillingPage() {
         </div>
 
         {/* Annual discount note */}
-        <div style={{ background:'hsl(140,40%,96%)', borderRadius:'14px', border:'1px solid hsl(140,30%,88%)', padding:'14px 18px', display:'flex', alignItems:'center', gap:'10px' }}>
-          <span style={{ fontSize:'1.2rem' }}>💰</span>
-          <p style={{ fontSize:'0.75rem', color:'hsl(140,30%,30%)', lineHeight:1.5 }}>
+        <div className="flex items-center gap-2.5 rounded-[14px] border border-border bg-wash px-[18px] py-3.5">
+          <p className="text-xs leading-normal text-primary">
             <strong>Save 20%</strong> with annual billing. Starter → $39/mo · Growth → $79/mo · Pro → $159/mo
           </p>
         </div>
 
-        <div style={{ textAlign:'center', padding:'8px', color:'hsl(24,8%,64%)', fontSize:'0.65rem' }}>
+        <div className="p-2 text-center text-[0.65rem] text-muted-foreground">
           Questions? Contact support@agencyos.app
         </div>
       </div>

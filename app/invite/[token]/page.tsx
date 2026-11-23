@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useId } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 type InviteInfo = { email: string; role: string; orgName: string }
+
+const inputCls = 'min-h-11 w-full rounded-[10px] border-[1.5px] border-border bg-background px-3.5 py-3 text-sm font-medium text-foreground transition-colors placeholder:text-muted-foreground focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
 
 export default function AcceptInvitePage() {
   const params    = useParams()
@@ -20,8 +22,9 @@ export default function AcceptInvitePage() {
   const [confirm,     setConfirm]     = useState('')
   const [submitting,  setSubmitting]  = useState(false)
   const [submitError, setSubmitError] = useState('')
-
-  const brand = 'hsl(25,82%,60%)'
+  const [errorField, setErrorField] = useState<'name' | 'password' | 'confirm' | null>(null)
+  const uid = useId()
+  const errorId = `${uid}-error`
 
   useEffect(() => {
     async function loadInvite() {
@@ -36,9 +39,10 @@ export default function AcceptInvitePage() {
 
   async function handleAccept() {
     if (submitting || !invite) return
-    if (!fullName) { setSubmitError('Please enter your name.'); return }
-    if (password.length < 8) { setSubmitError('Password must be at least 8 characters.'); return }
-    if (password !== confirm) { setSubmitError('Passwords do not match.'); return }
+    setErrorField(null)
+    if (!fullName) { setErrorField('name'); setSubmitError('Please enter your name.'); return }
+    if (password.length < 8) { setErrorField('password'); setSubmitError('Password must be at least 8 characters.'); return }
+    if (password !== confirm) { setErrorField('confirm'); setSubmitError('Passwords do not match.'); return }
 
     setSubmitting(true)
     setSubmitError('')
@@ -62,84 +66,86 @@ export default function AcceptInvitePage() {
   }
 
   return (
-    <div style={{ minHeight:'100dvh', background:'hsl(42,30%,97%)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px' }}>
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-surface p-6">
 
       {/* Logo */}
-      <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'32px' }}>
-        <svg width="24" height="24" viewBox="0 0 30 30" fill="none">
-          <rect width="30" height="30" rx="9" fill={brand}/>
-          <path d="M9 22L15 8l6 14M11.5 17.5h7" stroke="hsl(42,30%,99%)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+      <div className="mb-8 flex items-center gap-2">
+        <svg width="24" height="24" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+          <rect width="30" height="30" rx="9" className="fill-primary"/>
+          <path d="M9 22L15 8l6 14M11.5 17.5h7" className="stroke-primary-foreground" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
-        <span style={{ fontWeight:800, fontSize:'1rem', color:'hsl(24,20%,11%)' }}>
-          Agency<span style={{ color: brand }}>OS</span>
+        <span className="text-base font-extrabold text-foreground">
+          Agency<span className="text-primary">OS</span>
         </span>
       </div>
 
-      <div style={{ background:'#fff', borderRadius:'24px', border:'1px solid hsl(38,14%,90%)', padding:'32px', width:'100%', maxWidth:'420px', boxShadow:'0 4px 24px rgba(15,26,20,0.06)' }}>
+      <div className="w-full max-w-[420px] rounded-3xl border border-border bg-background p-8 shadow-sm">
 
         {loading && (
-          <div style={{ textAlign:'center', padding:'24px 0', color:'hsl(24,8%,55%)', fontSize:'0.85rem' }}>
+          <div className="py-6 text-center text-[0.85rem] text-muted-foreground">
             Validating invite…
           </div>
         )}
 
         {!loading && loadError && (
-          <div style={{ textAlign:'center', padding:'16px 0' }}>
-            <div style={{ fontSize:'2.5rem', marginBottom:'12px' }}>⚠️</div>
-            <h2 style={{ fontSize:'1rem', fontWeight:800, color:'hsl(24,20%,11%)' }}>Invite not valid</h2>
-            <p style={{ fontSize:'0.78rem', color:'hsl(24,8%,52%)', marginTop:'8px', lineHeight:1.6 }}>{loadError}</p>
-            <p style={{ fontSize:'0.75rem', color:'hsl(24,8%,55%)', marginTop:'12px' }}>
+          <div className="py-4 text-center">
+            <div className="mb-3 text-[2.5rem]">⚠️</div>
+            <h2 className="text-base font-extrabold text-foreground">Invite not valid</h2>
+            <p role="alert" className="mt-2 text-[0.78rem] leading-relaxed text-muted-foreground">{loadError}</p>
+            <p className="mt-3 text-xs text-muted-foreground">
               Ask your admin to send a new invite.
             </p>
           </div>
         )}
 
         {!loading && invite && (
-          <div style={{ display:'flex', flexDirection:'column', gap:'18px' }}>
+          <div className="flex flex-col gap-[18px]">
 
             {/* Header */}
-            <div style={{ textAlign:'center' }}>
-              <div style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'6px 14px', borderRadius:'9999px', background:`${brand}18`, marginBottom:'12px' }}>
-                <span style={{ fontSize:'0.7rem', fontWeight:700, color:brand }}>{invite.orgName}</span>
+            <div className="text-center">
+              <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-wash px-3.5 py-1.5">
+                <span className="text-[0.7rem] font-bold text-primary">{invite.orgName}</span>
               </div>
-              <h2 style={{ fontSize:'1.2rem', fontWeight:800, color:'hsl(24,20%,11%)', lineHeight:1.2, letterSpacing:'-0.02em' }}>
+              <h2 className="text-xl font-extrabold leading-tight tracking-[-0.02em] text-foreground">
                 You&apos;ve been invited
               </h2>
-              <p style={{ fontSize:'0.78rem', color:'hsl(24,8%,52%)', marginTop:'6px' }}>
-                Joining as <strong style={{ color:'hsl(24,15%,20%)', textTransform:'capitalize' }}>{invite.role}</strong> · {invite.email}
+              <p className="mt-1.5 text-[0.78rem] text-muted-foreground">
+                Joining as <strong className="capitalize text-foreground">{invite.role}</strong> · {invite.email}
               </p>
             </div>
 
             {/* Form */}
             {[
-              { label:'Your name',   value:fullName,  set:setFullName,  type:'text',     placeholder:'Full name' },
-              { label:'Password',    value:password,  set:setPassword,  type:'password', placeholder:'8+ characters' },
-              { label:'Confirm',     value:confirm,   set:setConfirm,   type:'password', placeholder:'Repeat password' },
+              { key:'name' as const,     label:'Your name',   value:fullName,  set:setFullName,  type:'text',     placeholder:'Full name',        autoComplete:'name' },
+              { key:'password' as const, label:'Password',    value:password,  set:setPassword,  type:'password', placeholder:'8+ characters',    autoComplete:'new-password' },
+              { key:'confirm' as const,  label:'Confirm',     value:confirm,   set:setConfirm,   type:'password', placeholder:'Repeat password',  autoComplete:'new-password' },
             ].map(f => (
-              <div key={f.label} style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-                <label style={{ fontSize:'0.72rem', fontWeight:600, color:'hsl(24,10%,44%)' }}>{f.label}</label>
+              <div key={f.key} className="flex flex-col gap-1.5">
+                <label htmlFor={`${uid}-${f.key}`} className="text-[0.72rem] font-semibold text-muted-foreground">{f.label}</label>
                 <input
+                  id={`${uid}-${f.key}`}
                   type={f.type}
+                  autoComplete={f.autoComplete}
+                  required
+                  aria-invalid={errorField === f.key ? true : undefined}
+                  aria-describedby={errorField === f.key && submitError ? errorId : undefined}
                   value={f.value}
                   onChange={e => f.set(e.target.value)}
                   placeholder={f.placeholder}
-                  className="w-full outline-none"
-                  style={{ padding:'12px 14px', borderRadius:'10px', background:'hsl(40,18%,95%)', border:'1.5px solid hsl(38,14%,88%)', fontSize:'0.875rem', color:'hsl(24,20%,11%)', fontWeight:500 }}
-                  onFocus={e => { e.target.style.borderColor = brand }}
-                  onBlur={e => { e.target.style.borderColor = 'hsl(38,14%,88%)' }}
+                  className={inputCls}
                   onKeyDown={e => { if (e.key === 'Enter') handleAccept() }}
                 />
               </div>
             ))}
 
             {submitError && (
-              <p style={{ fontSize:'0.75rem', color:'hsl(4,72%,50%)', fontWeight:500 }}>{submitError}</p>
+              <p id={errorId} role="alert" className="text-xs font-medium text-danger">{submitError}</p>
             )}
 
             <button
               onClick={handleAccept}
               disabled={submitting}
-              style={{ padding:'14px', borderRadius:'9999px', background:brand, color:'white', fontWeight:700, fontSize:'0.875rem', border:'none', cursor:submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.75 : 1, boxShadow:`0 6px 20px ${brand}40` }}
+              className="min-h-11 cursor-pointer rounded-full bg-primary p-3.5 text-sm font-bold text-primary-foreground shadow-lg shadow-primary/25 transition-all disabled:cursor-not-allowed disabled:opacity-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               {submitting ? 'Joining…' : 'Accept & join workspace'}
             </button>

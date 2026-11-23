@@ -1,13 +1,8 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import type { ContentType } from "@/lib/types"
-
-const TYPE_COLORS: Record<ContentType, { bg: string; tint: string; label: string }> = {
-  graphic: { bg: "bg-coral", tint: "bg-coral-tint", label: "Graphic" },
-  video: { bg: "bg-lemon", tint: "bg-lemon-tint", label: "Video" },
-  reel: { bg: "bg-mint", tint: "bg-mint-tint", label: "Reel" },
-  story: { bg: "bg-lavender", tint: "bg-lavender-tint", label: "Story" },
-}
+import { CONTENT_TYPE_STYLE } from "@/lib/color-map"
+import { TypeIcon } from "@/components/ui/type-icon"
 
 export interface ContentCardProps
   extends React.HTMLAttributes<HTMLDivElement> {
@@ -28,7 +23,7 @@ export function ContentCard({
   children,
   ...props
 }: ContentCardProps) {
-  const cfg = TYPE_COLORS[type]
+  const cfg = CONTENT_TYPE_STYLE[type]
 
   return (
     <div
@@ -44,18 +39,21 @@ export function ContentCard({
       <div className="flex items-start gap-2">
         <div
           className={cn(
-            "h-6 min-w-5 rounded-[6px] flex items-center justify-center text-[0.6rem] font-semibold text-white",
-            cfg.bg
+            "h-6 min-w-6 rounded-[6px] flex items-center justify-center",
+            cfg.className
           )}
+          role="img"
+          aria-label={cfg.label}
+          title={cfg.label}
         >
-          {cfg.label[0]}
+          <TypeIcon name={cfg.icon} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[0.8rem] font-semibold text-ink leading-snug">
+          <p className="truncate text-[0.8rem] font-semibold text-foreground leading-snug">
             {title}
           </p>
           {meta && (
-            <p className="mt-0.5 line-clamp-2 text-[0.7rem] text-muted">
+            <p className="mt-0.5 line-clamp-2 text-[0.7rem] text-muted-foreground">
               {meta}
             </p>
           )}
@@ -63,7 +61,7 @@ export function ContentCard({
         {statusBadge}
       </div>
       {children && (
-        <div className="mt-2 text-[0.7rem] text-muted">{children}</div>
+        <div className="mt-2 text-[0.7rem] text-muted-foreground">{children}</div>
       )}
     </div>
   )

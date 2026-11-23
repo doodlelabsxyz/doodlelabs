@@ -23,6 +23,9 @@ export async function POST(request: NextRequest) {
     if (!adminProfile?.org_id) {
       return NextResponse.json({ error: 'No workspace found.' }, { status: 400 })
     }
+    if (adminProfile.role !== 'admin') {
+      return NextResponse.json({ error: 'Only admins can create accounts.' }, { status: 403 })
+    }
 
     const supabase = createAdminClient()
 

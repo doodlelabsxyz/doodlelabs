@@ -17,21 +17,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { UserAvatar } from '@/components/ui/user-avatar'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/supabase/useUser'
 import { cn } from '@/lib/utils'
+import { CONTENT_TYPE_STYLE } from '@/lib/color-map'
+import { TypeIcon } from '@/components/ui/type-icon'
 import type { ContentType, IdeaStatus } from '@/lib/types'
 
 gsap.registerPlugin(useGSAP)
-
-const TYPE_CFG: Record<ContentType, { label: string; badgeClass: string }> = {
-  graphic: { label: 'Graphic', badgeClass: 'bg-coral/15 text-coral' },
-  video: { label: 'Video', badgeClass: 'bg-lemon/20 text-amber-700' },
-  reel: { label: 'Reel', badgeClass: 'bg-mint/15 text-mint' },
-  story: { label: 'Story', badgeClass: 'bg-lavender/15 text-lavender' },
-}
 
 const STATUS_CFG: Record<
   IdeaStatus,
@@ -41,17 +37,17 @@ const STATUS_CFG: Record<
     label: 'Raw',
     badgeClass: 'bg-secondary text-muted-foreground',
     dotClass: 'bg-muted-foreground',
-    actionClass: 'bg-lemon/20 text-amber-700 hover:bg-lemon/30',
+    actionClass: 'bg-wash text-primary hover:bg-sage',
   },
   shortlisted: {
     label: 'Shortlisted',
-    badgeClass: 'bg-lemon/20 text-amber-700',
-    dotClass: 'bg-lemon',
-    actionClass: 'bg-success/15 text-success hover:bg-success/25',
+    badgeClass: 'bg-status-active text-status-active-fg',
+    dotClass: 'bg-primary',
+    actionClass: 'bg-status-done text-status-done-fg hover:bg-sage',
   },
   converted: {
     label: 'Converted',
-    badgeClass: 'bg-success/15 text-success',
+    badgeClass: 'bg-status-done text-status-done-fg',
     dotClass: 'bg-success',
   },
 }
@@ -113,7 +109,7 @@ function FilterPill({
       className={cn(
         'rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap transition-colors',
         active && color && 'bg-[var(--pill-color)] text-white',
-        active && !color && 'bg-coral text-white',
+        active && !color && 'bg-mint text-dark',
         !active && 'bg-white/7 text-dark-muted hover:bg-white/10 hover:text-dark-text'
       )}
     >
@@ -162,7 +158,21 @@ export default function IdeasPage() {
     )
   }, { dependencies: [mounted, statusFilter, clientFilter], scope: gridRef })
 
-  if (!mounted) return null
+  if (!mounted) {
+    return (
+      <main aria-busy="true" aria-label="Loading ideas" className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto">
+        <section className="bg-dark px-5 pt-[18px] pb-4">
+          <Skeleton className="mb-2 h-2.5 w-14 bg-white/10" />
+          <Skeleton className="h-5 w-32 bg-white/10" />
+        </section>
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-36 w-full rounded-xl" />
+          ))}
+        </div>
+      </main>
+    )
+  }
 
   const filtered = ideas
     .filter(i => statusFilter === 'all' || i.status === statusFilter)
@@ -177,7 +187,7 @@ export default function IdeasPage() {
   async function addIdea() {
     if (!form.title.trim() || !form.body.trim() || !user) return
     const supabase = createClient()
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('ideas')
       .insert({
         title: form.title.trim(),
@@ -191,7 +201,11 @@ export default function IdeasPage() {
       })
       .select('*, clients:client_id(id, name, brand_color), author:created_by(id, name)')
       .single()
-    if (data) setIdeas(prev => [data as IdeaRow, ...prev])
+    if (error || !data) {
+      console.error('idea insert failed', error)
+      return
+    }
+    setIdeas(prev => [data as IdeaRow, ...prev])
     setForm({ ...EMPTY_FORM })
     setTagInput('')
     setShowForm(false)
@@ -200,7 +214,8 @@ export default function IdeasPage() {
   async function updateStatus(id: string, status: IdeaStatus) {
     setIdeas(prev => prev.map(i => (i.id === id ? { ...i, status } : i)))
     const supabase = createClient()
-    await supabase.from('ideas').update({ status }).eq('id', id)
+    const { error } = await supabase.from('ideas').update({ status }).eq('id', id)
+    if (error) console.error('idea status update failed', error)
   }
 
   async function convertToBrief(idea: IdeaRow) {
@@ -234,7 +249,7 @@ export default function IdeasPage() {
             className={cn(
               showForm
                 ? 'bg-white/8 text-dark-text hover:bg-white/12'
-                : 'bg-coral text-white hover:bg-coral/85'
+                : 'bg-primary text-primary-foreground hover:bg-primary/85'
             )}
           >
             {showForm ? 'Cancel' : 'New Idea'}
@@ -350,7 +365,7 @@ export default function IdeasPage() {
                     onClick={() =>
                       setForm(p => ({ ...p, tags: p.tags.filter(t => t !== tag) }))
                     }
-                    className="rounded-full bg-sky/15 px-2 py-1 text-[0.65rem] font-bold text-sky"
+                    className="rounded-full bg-wash px-2 py-1 text-[0.65rem] font-bold text-primary"
                   >
                     #{tag} ×
                   </button>
@@ -368,7 +383,7 @@ export default function IdeasPage() {
                     variant="secondary"
                     size="xs"
                     onClick={addTag}
-                    className="bg-sky/15 text-sky hover:bg-sky/25"
+                    className="bg-wash text-primary hover:bg-sage"
                   >
                     +
                   </Button>
@@ -378,7 +393,7 @@ export default function IdeasPage() {
               <Button
                 onClick={addIdea}
                 disabled={!form.title.trim() || !form.body.trim()}
-                className="self-start bg-coral text-white hover:bg-coral/85"
+                className="self-start bg-primary text-primary-foreground hover:bg-primary/85"
               >
                 Dump it
               </Button>
@@ -403,7 +418,7 @@ export default function IdeasPage() {
         <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3">
           {filtered.map(idea => {
             const sc = STATUS_CFG[idea.status]
-            const tc = idea.type ? TYPE_CFG[idea.type] : null
+            const tc = idea.type ? CONTENT_TYPE_STYLE[idea.type] : null
             const client = normalize(idea.clients)
             const author = normalize(idea.author)
 
@@ -421,7 +436,8 @@ export default function IdeasPage() {
                       {sc.label}
                     </Badge>
                     {tc && (
-                      <Badge className={cn('border-0 text-[0.6rem] font-bold', tc.badgeClass)}>
+                      <Badge className={cn('gap-1 text-[0.6rem] font-bold', tc.className)}>
+                        <TypeIcon name={tc.icon} className="size-2" />
                         {tc.label}
                       </Badge>
                     )}
@@ -452,7 +468,7 @@ export default function IdeasPage() {
                       {idea.tags.map(tag => (
                         <Badge
                           key={tag}
-                          className="border-0 bg-sky/15 text-[0.58rem] font-bold text-sky"
+                          className="border-0 bg-wash text-[0.58rem] font-bold text-primary"
                         >
                           #{tag}
                         </Badge>

@@ -1,7 +1,11 @@
 import { createAdminClient } from '@/lib/supabase/server'
 import { NextResponse, type NextRequest } from 'next/server'
+import { rateLimit, clientIp, tooMany } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
+  const rl = rateLimit(`invite-accept:${clientIp(request)}`, 20, 10 * 60 * 1000)
+  if (!rl.ok) return tooMany(rl.retryAfter)
+
   const { token, name, password } = await request.json()
 
   if (!token || !name || !password) {

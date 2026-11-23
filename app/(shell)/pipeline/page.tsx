@@ -1,42 +1,44 @@
 'use client'
 
-import { useState, useRef, useEffect, type CSSProperties } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { createClient } from '@/lib/supabase/client'
 import { useUser } from '@/lib/supabase/useUser'
 import { cn } from '@/lib/utils'
-import type { ContentType, ContentStatus } from '@/lib/types'
-import { getInitials, getAvatarColor } from '@/lib/utils'
+import { FilterPill } from '@/components/ui/filter-pill'
+import { Skeleton } from '@/components/ui/skeleton'
+import { UserAvatar } from '@/components/ui/user-avatar'
+import { PlatformBadge } from '@/components/ui/platform-badge'
+import { TypeIcon, StatusIcon } from '@/components/ui/type-icon'
+import { CONTENT_TYPE_STYLE, STATUS_STYLE, type StatusIconName } from '@/lib/color-map'
+import type { ContentType, ContentStatus, Platform } from '@/lib/types'
+import { isContentOverdue } from '@/lib/overdue'
 
 gsap.registerPlugin(useGSAP)
 
-// Full Tailwind class strings — must be complete for JIT scanning
-const TYPE_CELL: Record<ContentType, { bg: string; text: string; label: string; accentBar: string }> = {
-  graphic: { bg: 'bg-coral',    text: 'text-white',     label: 'Graphic', accentBar: 'bg-coral'    },
-  video:   { bg: 'bg-lemon',    text: 'text-amber-900', label: 'Video',   accentBar: 'bg-lemon'    },
-  reel:    { bg: 'bg-mint',     text: 'text-white',     label: 'Reel',    accentBar: 'bg-mint'     },
-  story:   { bg: 'bg-lavender', text: 'text-white',     label: 'Story',   accentBar: 'bg-lavender' },
-}
+// Dark-header overrides for the shared FilterPill (header panel is always dark)
+const PIPE_PILL_BASE   = 'shrink-0 whitespace-nowrap border-transparent px-[11px] text-[0.75rem]'
+const PIPE_PILL_ACTIVE = 'bg-mint text-dark'
+const PIPE_PILL_IDLE   = 'bg-white/[0.07] text-dark-muted hover:bg-white/[0.1]'
 
 type ColumnCfg = {
   status: ContentStatus
-  label: string
-  dotCls: string
-  countBgCls: string
-  countTextCls: string
+  icon: StatusIconName
+  headerCls: string
   borderCls: string
 }
 
+// Neutral headers; stage index maps to a deeper green tint (planned -> posted).
 const COLUMNS: ColumnCfg[] = [
-  { status: 'planned',          label: 'Planned',     dotCls: 'bg-[hsl(220,15%,62%)]',   countBgCls: 'bg-[hsl(220,15%,93%)]',   countTextCls: 'text-[hsl(220,15%,42%)]', borderCls: 'border-b-2 border-b-[hsl(220,15%,62%)]/25' },
-  { status: 'brief-ready',      label: 'Brief Ready', dotCls: 'bg-sky',                   countBgCls: 'bg-sky-tint',              countTextCls: 'text-sky',                borderCls: 'border-b-2 border-b-sky/25'                },
-  { status: 'in-design',        label: 'In Design',   dotCls: 'bg-coral',                 countBgCls: 'bg-coral-tint',            countTextCls: 'text-coral',              borderCls: 'border-b-2 border-b-coral/25'              },
-  { status: 'in-editing',       label: 'In Editing',  dotCls: 'bg-lemon',                 countBgCls: 'bg-lemon-tint',            countTextCls: 'text-[hsl(40,60%,32%)]', borderCls: 'border-b-2 border-b-lemon/30'              },
-  { status: 'ready-for-review', label: 'Review',      dotCls: 'bg-lavender',              countBgCls: 'bg-lavender-tint',         countTextCls: 'text-lavender',           borderCls: 'border-b-2 border-b-lavender/25'           },
-  { status: 'approved',         label: 'Approved',    dotCls: 'bg-success',               countBgCls: 'bg-mint-tint',             countTextCls: 'text-success',            borderCls: 'border-b-2 border-b-success/25'            },
-  { status: 'posted',           label: 'Posted',      dotCls: 'bg-success/60',            countBgCls: 'bg-mint-tint/60',          countTextCls: 'text-success/70',         borderCls: 'border-b-2 border-b-success/20'            },
+  { status: 'planned',          icon: 'circle', headerCls: 'bg-primary/[0.03]', borderCls: 'border-b-2 border-b-primary/10' },
+  { status: 'brief-ready',      icon: 'dot',    headerCls: 'bg-primary/[0.06]', borderCls: 'border-b-2 border-b-primary/20' },
+  { status: 'in-design',        icon: 'dot',    headerCls: 'bg-primary/10',     borderCls: 'border-b-2 border-b-primary/30' },
+  { status: 'in-editing',       icon: 'dot',    headerCls: 'bg-primary/[0.14]', borderCls: 'border-b-2 border-b-primary/40' },
+  { status: 'ready-for-review', icon: 'clock',  headerCls: 'bg-primary/[0.18]', borderCls: 'border-b-2 border-b-primary/55' },
+  { status: 'approved',         icon: 'check',  headerCls: 'bg-primary/[0.22]', borderCls: 'border-b-2 border-b-primary/70' },
+  { status: 'posted',           icon: 'check',  headerCls: 'bg-primary/[0.28]', borderCls: 'border-b-2 border-b-primary/90' },
 ]
 
 type ContentRow = {
@@ -44,7 +46,7 @@ type ContentRow = {
   title: string
   type: ContentType
   status: ContentStatus
-  platforms: string[]
+  platforms: Platform[]
   scheduled_date: string
   client_id: string
   assigned_to: string[]
@@ -78,6 +80,7 @@ export default function PipelinePage() {
   const [clientFil,     setClientFil]     = useState<string | null>(null)
   const [movePopup,     setMovePopup]     = useState<{ item: ContentRow; x: number; y: number } | null>(null)
   const [assignPopup,   setAssignPopup]   = useState<{ item: ContentRow; role: string; x: number; y: number } | null>(null)
+  const [actionError,   setActionError]   = useState('')
 
   useEffect(() => {
     async function load() {
@@ -91,6 +94,10 @@ export default function PipelinePage() {
         supabase.from('users').select('id, name, role'),
         supabase.from('client_team').select('client_id, role, user_id'),
       ])
+
+      if (contentRes.error || clientsRes.error || usersRes.error || teamRes.error) {
+        setActionError('Could not load the pipeline. Try refreshing the page.')
+      }
 
       const mapped: ContentRow[] = (contentRes.data || []).map(c => ({
         ...c,
@@ -126,14 +133,62 @@ export default function PipelinePage() {
   const filtered = clientFil ? items.filter(c => c.client_id === clientFil) : items
 
   function itemsForColumn(status: ContentStatus) {
-    return filtered.filter(c => c.status === status || (c.status === 'overdue' && status === 'planned'))
+    // Overdue is a computed flag on whatever real column the piece is in
+    // (see isContentOverdue), not a stored status — nothing ever writes
+    // status='overdue', so a piece never actually needs folding into 'planned'.
+    return filtered.filter(c => c.status === status)
   }
 
   async function moveItem(item: ContentRow, newStatus: ContentStatus) {
+    const previousRole = stageRole(item)
+
     setItems(prev => prev.map(c => c.id === item.id ? { ...c, status: newStatus } : c))
     setMovePopup(null)
     const supabase = createClient()
-    await supabase.from('content_pieces').update({ status: newStatus }).eq('id', item.id)
+    setActionError('')
+    const { data, error } = await supabase.from('content_pieces').update({ status: newStatus }).eq('id', item.id).select('id').single()
+    if (error || !data) {
+      setItems(prev => prev.map(c => c.id === item.id ? { ...c, status: item.status } : c))
+      setActionError('Could not move that card. Please try again.')
+      return
+    }
+
+    // Close out only the task for the stage being LEFT, scoped by role — not
+    // every pending task on this content piece. Brief creation front-loads a
+    // task for every type-relevant role at once (writer + designer/poster,
+    // say), so a blind "close everything pending" here would mark the
+    // designer's and poster's tasks done before they'd done anything.
+    await supabase.from('tasks').update({ status: 'done' }).eq('content_id', item.id).eq('role', previousRole).neq('status', 'done')
+
+    const role = stageRoleForStatus(newStatus, item.type)
+    const assigneeId = role ? clientTeamMap[item.client_id]?.[role] : undefined
+    if (role && assigneeId) {
+      // Brief creation may have already front-loaded a pending task for this
+      // role — don't create a second one for the same content piece.
+      const { data: existingTask } = await supabase
+        .from('tasks')
+        .select('id')
+        .eq('content_id', item.id)
+        .eq('role', role)
+        .neq('status', 'done')
+        .maybeSingle()
+
+      if (existingTask) {
+        await supabase.from('tasks').update({ assigned_to: assigneeId, status: 'pending' }).eq('id', existingTask.id)
+      } else {
+        await supabase.from('tasks').insert({
+          title: roleTaskTitle(role, item.title),
+          description: `Auto-generated task for "${item.title}"`,
+          content_id: item.id,
+          client_id: item.client_id,
+          assigned_to: assigneeId,
+          role,
+          due_date: item.scheduled_date || new Date().toISOString().split('T')[0],
+          status: 'pending',
+          org_id: user?.org_id,
+        })
+      }
+    }
   }
 
   function stageRole(item: ContentRow): string {
@@ -141,6 +196,25 @@ export default function PipelinePage() {
     if (item.status === 'in-design') return item.type === 'video' || item.type === 'reel' ? 'videographer' : 'designer'
     if (item.status === 'in-editing') return 'editor'
     return 'poster'
+  }
+
+  function stageRoleForStatus(status: ContentStatus, type: ContentType): string | null {
+    if (status === 'planned' || status === 'brief-ready') return 'writer'
+    if (status === 'in-design') return type === 'video' || type === 'reel' ? 'videographer' : 'designer'
+    if (status === 'in-editing') return 'editor'
+    if (status === 'ready-for-review') return 'poster'
+    return null
+  }
+
+  function roleTaskTitle(role: string, title: string): string {
+    const map: Record<string, string> = {
+      writer: `Write brief: ${title}`,
+      designer: `Design: ${title}`,
+      videographer: `Film: ${title}`,
+      editor: `Edit: ${title}`,
+      poster: `Schedule & post: ${title}`,
+    }
+    return map[role] ?? `${role}: ${title}`
   }
 
   function getStageUser(item: ContentRow): UserSlim | null {
@@ -151,20 +225,76 @@ export default function PipelinePage() {
 
   async function reassignStageUser(item: ContentRow, newUserId: string) {
     const role = stageRole(item)
+    const previousUserId = clientTeamMap[item.client_id]?.[role]
     setClientTeamMap(prev => ({
       ...prev,
       [item.client_id]: { ...(prev[item.client_id] || {}), [role]: newUserId },
     }))
     setAssignPopup(null)
+    setActionError('')
     const supabase = createClient()
-    await supabase.from('client_team')
+    const { data, error } = await supabase.from('client_team')
       .upsert({ client_id: item.client_id, role, user_id: newUserId, org_id: user?.org_id }, { onConflict: 'client_id,role' })
+      .select('id')
+      .single()
+
+    if (error || !data) {
+      setClientTeamMap(prev => ({
+        ...prev,
+        [item.client_id]: { ...(prev[item.client_id] || {}), [role]: previousUserId ?? '' },
+      }))
+      setActionError('Could not reassign that role. Please try again.')
+      return
+    }
+
+    // Move this piece's current-stage task over to whoever was just assigned
+    const { data: existing } = await supabase
+      .from('tasks')
+      .select('id')
+      .eq('content_id', item.id)
+      .eq('role', role)
+      .neq('status', 'done')
+      .maybeSingle()
+
+    if (existing) {
+      await supabase.from('tasks').update({ assigned_to: newUserId }).eq('id', existing.id)
+    } else {
+      await supabase.from('tasks').insert({
+        title: roleTaskTitle(role, item.title),
+        description: `Auto-generated task for "${item.title}"`,
+        content_id: item.id,
+        client_id: item.client_id,
+        assigned_to: newUserId,
+        role,
+        due_date: item.scheduled_date || new Date().toISOString().split('T')[0],
+        status: 'pending',
+        org_id: user?.org_id,
+      })
+    }
   }
 
   const totalActive  = filtered.filter(c => c.status !== 'posted').length
-  const overdueCount = filtered.filter(c => c.status === 'overdue').length
+  const overdueCount = filtered.filter(isContentOverdue).length
 
-  if (!mounted) return null
+  if (!mounted) {
+    return (
+      <main aria-busy="true" aria-label="Loading pipeline" className="page-main flex-1 min-w-0 flex flex-col overflow-hidden">
+        <div className="bg-dark px-5 pt-[18px] pb-[14px] shrink-0">
+          <Skeleton className="mb-2 h-2.5 w-14 bg-white/10" />
+          <Skeleton className="h-5 w-32 bg-white/10" />
+        </div>
+        <div className="flex flex-1 gap-3 overflow-hidden p-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="w-64 shrink-0 space-y-3">
+              <Skeleton className="h-5 w-24" />
+              <Skeleton className="h-24 w-full rounded-xl" />
+              <Skeleton className="h-24 w-full rounded-xl" />
+            </div>
+          ))}
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main className="page-main flex-1 min-w-0 flex flex-col overflow-hidden">
@@ -179,7 +309,7 @@ export default function PipelinePage() {
 
           <div className="flex gap-[14px] items-center">
             <div className="text-right">
-              <p className="text-[1rem] font-extrabold text-coral leading-none">{totalActive}</p>
+              <p className="text-[1rem] font-extrabold text-primary leading-none">{totalActive}</p>
               <p className="text-[0.6rem] text-dark-muted mt-[2px]">active</p>
             </div>
             {overdueCount > 0 && (
@@ -191,23 +321,45 @@ export default function PipelinePage() {
                 </div>
               </>
             )}
+            <button
+              onClick={() => router.push('/brief/new')}
+              className="shrink-0 rounded-full bg-mint px-3 py-1.5 text-[0.72rem] font-bold text-dark hover:bg-mint/85 pointer-coarse:min-h-11"
+            >
+              + New
+            </button>
           </div>
         </div>
 
         {/* Client filter pills */}
         <div className="scrollbar-hide flex gap-[6px] overflow-x-auto pb-[2px]">
-          <PipeFilterPill label="All Clients" active={!clientFil} onClick={() => setClientFil(null)} />
-          {clients.map(c => (
-            <PipeFilterPill
-              key={c.id}
-              label={c.name}
-              active={clientFil === c.id}
-              color={c.brand_color}
-              onClick={() => setClientFil(clientFil === c.id ? null : c.id)}
-            />
-          ))}
+          <FilterPill
+            active={!clientFil}
+            onClick={() => setClientFil(null)}
+            className={cn(PIPE_PILL_BASE, !clientFil ? PIPE_PILL_ACTIVE : PIPE_PILL_IDLE)}
+          >
+            All Clients
+          </FilterPill>
+          {clients.map(c => {
+            const active = clientFil === c.id
+            return (
+              <FilterPill
+                key={c.id}
+                active={active}
+                onClick={() => setClientFil(active ? null : c.id)}
+                className={cn(PIPE_PILL_BASE, active ? PIPE_PILL_ACTIVE : PIPE_PILL_IDLE)}
+              >
+                {c.name}
+              </FilterPill>
+            )
+          })}
         </div>
       </div>
+
+      {actionError && (
+        <div className="mx-3 mt-2 rounded-lg border border-danger/20 bg-danger/5 px-3 py-2 text-xs font-medium text-danger">
+          {actionError}
+        </div>
+      )}
 
       {/* ── Kanban Board ── */}
       <div
@@ -219,13 +371,13 @@ export default function PipelinePage() {
           return (
             <div
               key={col.status}
-              className="min-w-[260px] max-w-[300px] flex-[1_0_260px] flex flex-col rounded-[14px] bg-island-2 snap-start overflow-hidden"
+              className="min-w-[260px] max-w-[300px] flex-[1_0_260px] flex flex-col rounded-[14px] bg-wash snap-start overflow-hidden"
             >
               {/* Column header */}
-              <div className={cn("px-[14px] py-3 flex items-center gap-2 shrink-0", col.borderCls)}>
-                <div className={cn("w-2 h-2 rounded-full shrink-0", col.dotCls)} />
-                <span className="text-[0.8rem] font-bold text-ink flex-1">{col.label}</span>
-                <span className={cn("text-[0.7rem] font-bold px-2 py-0.5 rounded-full", col.countBgCls, col.countTextCls)}>
+              <div className={cn("px-[14px] py-3 flex items-center gap-2 shrink-0", col.headerCls, col.borderCls)}>
+                <StatusIcon name={col.icon} className="size-3 text-primary" />
+                <span className="text-[0.8rem] font-bold text-foreground flex-1">{STATUS_STYLE[col.status].label}</span>
+                <span className="text-[0.7rem] font-bold px-2 py-0.5 rounded-full bg-card text-foreground border border-border">
                   {colItems.length}
                 </span>
               </div>
@@ -233,8 +385,8 @@ export default function PipelinePage() {
               {/* Card list */}
               <div className="flex-1 overflow-y-auto p-2 pb-[100px] flex flex-col gap-[6px]">
                 {colItems.map(cp => {
-                  const cfg       = TYPE_CELL[cp.type]
-                  const isOverdue = cp.status === 'overdue'
+                  const cfg       = CONTENT_TYPE_STYLE[cp.type]
+                  const isOverdue = isContentOverdue(cp)
                   const stageUser = getStageUser(cp)
                   const sRole     = stageRole(cp)
 
@@ -244,32 +396,31 @@ export default function PipelinePage() {
                       data-animate="pipe-card"
                       onClick={() => router.push(`/brief/${cp.id}`)}
                       className={cn(
-                        "bg-island rounded-xl overflow-hidden cursor-pointer",
+                        "bg-card rounded-xl overflow-hidden cursor-pointer",
                         "transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
-                        "hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(15,26,20,0.1)]",
+                        "hover:-translate-y-0.5 hover:shadow-md",
                         isOverdue
                           ? "border border-danger/70"
                           : "border border-border"
                       )}
                     >
-                      {/* Type accent bar */}
-                      <div className={cn("h-[3px]", cfg.accentBar)} />
-
                       <div className="px-3 py-[10px]">
-                        <p className="text-[0.8rem] font-bold text-ink leading-[1.3] mb-1">{cp.title}</p>
-                        <p className="text-[0.656rem] text-muted mb-2">{cp.clients?.name}</p>
+                        <p className="text-[0.8rem] font-bold text-foreground leading-[1.3] mb-1">{cp.title}</p>
+                        <p className="text-[0.656rem] text-muted-foreground mb-2">{cp.clients?.name}</p>
 
                         <div className="flex items-center gap-[6px] flex-wrap">
                           {/* Type badge */}
-                          <span className={cn("px-[6px] py-0.5 rounded-[4px] text-[0.58rem] font-bold", cfg.bg, cfg.text)}>
+                          <span className={cn("inline-flex items-center gap-1 px-[6px] py-0.5 rounded-[4px] text-[0.58rem] font-bold", cfg.className)}>
+                            <TypeIcon name={cfg.icon} className="size-2.5" />
                             {cfg.label}
                           </span>
 
                           {/* Date */}
                           <span className={cn(
-                            "text-[0.6rem] font-semibold",
-                            isOverdue ? "text-danger" : "text-muted"
+                            "inline-flex items-center gap-0.5 text-[0.6rem] font-semibold",
+                            isOverdue ? "text-danger" : "text-muted-foreground"
                           )}>
+                            {isOverdue && <StatusIcon name="bang" className="size-2.5" />}
                             {formatDate(cp.scheduled_date)}
                           </span>
 
@@ -286,23 +437,27 @@ export default function PipelinePage() {
                               const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
                               setAssignPopup({ item: cp, role: sRole, x: rect.left, y: rect.bottom + 4 })
                             }}
-                            style={stageUser
-                              ? { background: `${getAvatarColor(stageUser.id)}18` } as CSSProperties
-                              : undefined
-                            }
                             className={cn(
-                              "flex items-center gap-1 pl-0.5 pr-[6px] py-[2px] rounded-lg border-0 cursor-pointer",
-                              "transition-colors hover:bg-coral/10",
-                              !stageUser && "bg-island-2"
+                              "relative flex items-center gap-1 pl-0.5 pr-[6px] py-[2px] rounded-lg border-0 cursor-pointer",
+                              "before:absolute before:-inset-2 before:content-['']",
+                              "transition-colors hover:bg-primary/10",
+                              stageUser ? "bg-wash" : "bg-sage"
                             )}
                           >
-                            <div
-                              className="w-5 h-5 rounded-[6px] shrink-0 flex items-center justify-center text-[0.46rem] font-extrabold text-white"
-                              style={{ background: stageUser ? getAvatarColor(stageUser.id) : 'hsl(38,14%,80%)' }}
-                            >
-                              {stageUser ? getInitials(stageUser.name) : '?'}
-                            </div>
-                            <span className="text-[0.56rem] font-semibold text-muted whitespace-nowrap">
+                            {stageUser ? (
+                              <UserAvatar
+                                userId={stageUser.id}
+                                name={stageUser.name}
+                                className="w-5 h-5 rounded-[6px] text-[0.46rem]"
+                              />
+                            ) : (
+                              <div
+                                className="w-5 h-5 rounded-[6px] shrink-0 flex items-center justify-center text-[0.46rem] font-extrabold bg-sage text-foreground"
+                              >
+                                ?
+                              </div>
+                            )}
+                            <span className="text-[0.56rem] font-semibold text-muted-foreground whitespace-nowrap">
                               {stageUser ? stageUser.name.split(' ')[0] : `+ ${sRole}`}
                             </span>
                           </button>
@@ -314,7 +469,7 @@ export default function PipelinePage() {
                               const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
                               setMovePopup({ item: cp, x: rect.left, y: rect.bottom + 4 })
                             }}
-                            className="w-[22px] h-[22px] rounded-[6px] bg-island-2 border-0 cursor-pointer flex items-center justify-center text-[10px] text-muted transition-colors hover:bg-coral hover:text-white"
+                            aria-label="Move card" className="relative before:absolute before:-inset-[11px] before:content-[''] w-[22px] h-[22px] rounded-[6px] bg-wash border-0 cursor-pointer flex items-center justify-center text-[10px] text-muted-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
                           >→</button>
                         </div>
 
@@ -322,12 +477,7 @@ export default function PipelinePage() {
                         {(cp.platforms || []).length > 0 && (
                           <div className="flex gap-1 mt-[6px]">
                             {cp.platforms.map(p => (
-                              <span
-                                key={p}
-                                className="text-[0.52rem] font-semibold px-[5px] py-px rounded-[3px] bg-island-2 text-muted capitalize"
-                              >
-                                {p}
-                              </span>
+                              <PlatformBadge key={p} platform={p} subtle className="text-[0.52rem] px-[5px] py-px" />
                             ))}
                           </div>
                         )}
@@ -337,8 +487,8 @@ export default function PipelinePage() {
                 })}
 
                 {colItems.length === 0 && (
-                  <div className="px-3 py-6 text-center border border-dashed border-border rounded-[10px] bg-cream/50">
-                    <p className="text-[0.7rem] text-ghost font-medium">No items</p>
+                  <div className="px-3 py-6 text-center border border-dashed border-border rounded-[10px] bg-background/50">
+                    <p className="text-[0.7rem] text-muted-foreground font-medium">No items</p>
                   </div>
                 )}
               </div>
@@ -352,20 +502,20 @@ export default function PipelinePage() {
         <>
           <div className="fixed inset-0 z-50" onClick={() => setAssignPopup(null)} />
           <div
-            className="fixed z-[51] bg-island rounded-[14px] p-2 w-[210px] shadow-[0_12px_40px_rgba(15,26,20,0.2)] border border-border"
+            className="fixed z-[51] bg-card rounded-[14px] p-2 w-[210px] shadow-md border border-border"
             style={{
               left: Math.min(assignPopup.x, window.innerWidth - 220),
               top:  Math.min(assignPopup.y, window.innerHeight - 260),
             }}
           >
-            <p className="text-[0.7rem] font-bold text-muted px-2 py-1 pb-[6px] border-b border-border mb-1 capitalize">
+            <p className="text-[0.7rem] font-bold text-muted-foreground px-2 py-1 pb-[6px] border-b border-border mb-1 capitalize">
               Assign {assignPopup.role}
             </p>
             {(() => {
               const usersForRole = Object.values(userMap).filter(u => u.role === assignPopup.role)
               const currentUid   = clientTeamMap[assignPopup.item.client_id]?.[assignPopup.role]
               if (usersForRole.length === 0) return (
-                <p className="text-[0.7rem] text-muted px-2 py-2 text-center">
+                <p className="text-[0.7rem] text-muted-foreground px-2 py-2 text-center">
                   No {assignPopup.role}s in team
                 </p>
               )
@@ -376,18 +526,13 @@ export default function PipelinePage() {
                     key={u.id}
                     onClick={() => reassignStageUser(assignPopup.item, u.id)}
                     className={cn(
-                      "flex items-center gap-2 w-full px-2 py-[7px] rounded-lg border-0 cursor-pointer text-left transition-colors",
-                      isCurrent ? "bg-island-2" : "bg-transparent hover:bg-island-2"
+                      "flex items-center gap-2 w-full px-2 py-[7px] min-h-11 rounded-lg border-0 cursor-pointer text-left transition-colors",
+                      isCurrent ? "bg-wash" : "bg-transparent hover:bg-wash"
                     )}
                   >
-                    <div
-                      className="w-6 h-6 rounded-[7px] shrink-0 flex items-center justify-center text-[0.5rem] font-extrabold text-white"
-                      style={{ background: getAvatarColor(u.id) }}
-                    >
-                      {getInitials(u.name)}
-                    </div>
-                    <span className="text-[0.75rem] font-semibold text-ink flex-1">{u.name}</span>
-                    {isCurrent && <span className="text-[0.6rem] text-ghost">✓</span>}
+                    <UserAvatar userId={u.id} name={u.name} size="sm" className="rounded-[7px] text-[0.5rem]" />
+                    <span className="text-[0.75rem] font-semibold text-foreground flex-1">{u.name}</span>
+                    {isCurrent && <span className="text-[0.6rem] text-muted-foreground">✓</span>}
                   </button>
                 )
               })
@@ -401,34 +546,33 @@ export default function PipelinePage() {
         <>
           <div className="fixed inset-0 z-50" onClick={() => setMovePopup(null)} />
           <div
-            className="fixed z-[51] bg-island rounded-[14px] p-2 w-[200px] shadow-[0_12px_40px_rgba(15,26,20,0.2)] border border-border"
+            className="fixed z-[51] bg-card rounded-[14px] p-2 w-[200px] shadow-md border border-border"
             style={{
               left: Math.min(movePopup.x, window.innerWidth - 220),
               top:  Math.min(movePopup.y, window.innerHeight - 300),
             }}
           >
-            <p className="text-[0.7rem] font-bold text-muted px-2 py-1 pb-[6px] border-b border-border mb-1">
+            <p className="text-[0.7rem] font-bold text-muted-foreground px-2 py-1 pb-[6px] border-b border-border mb-1">
               Move to…
             </p>
             {COLUMNS.map(col => {
-              const isCurrent = movePopup.item.status === col.status ||
-                (movePopup.item.status === 'overdue' && col.status === 'planned')
+              const isCurrent = movePopup.item.status === col.status
               return (
                 <button
                   key={col.status}
                   disabled={isCurrent}
                   onClick={() => moveItem(movePopup.item, col.status)}
                   className={cn(
-                    "flex items-center gap-2 w-full px-2 py-[7px] rounded-lg border-0 text-left transition-colors",
+                    "flex items-center gap-2 w-full px-2 py-[7px] min-h-11 rounded-lg border-0 text-left transition-colors",
                     isCurrent
-                      ? "bg-island-2 opacity-50 cursor-default"
-                      : "bg-transparent cursor-pointer hover:bg-island-2"
+                      ? "bg-wash opacity-50 cursor-default"
+                      : "bg-transparent cursor-pointer hover:bg-wash"
                   )}
                 >
-                  <div className={cn("w-[6px] h-[6px] rounded-full shrink-0", col.dotCls)} />
-                  <span className="text-[0.75rem] font-semibold text-ink">{col.label}</span>
+                  <StatusIcon name={col.icon} className="size-2.5 text-primary" />
+                  <span className="text-[0.75rem] font-semibold text-foreground">{STATUS_STYLE[col.status].label}</span>
                   {isCurrent && (
-                    <span className="text-[0.6rem] text-ghost ml-auto">current</span>
+                    <span className="text-[0.6rem] text-muted-foreground ml-auto">current</span>
                   )}
                 </button>
               )
@@ -437,29 +581,5 @@ export default function PipelinePage() {
         </>
       )}
     </main>
-  )
-}
-
-// ─── Filter pill (dark header variant) ────────────────────────────────────────
-function PipeFilterPill({
-  label, active, color, onClick,
-}: {
-  label: string; active: boolean; color?: string; onClick: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={active && color ? { '--pill-color': color } as CSSProperties : undefined}
-      className={cn(
-        "px-[11px] py-1 rounded-full text-[0.75rem] font-semibold cursor-pointer whitespace-nowrap shrink-0 border-0 transition-colors",
-        active
-          ? color
-            ? "bg-[var(--pill-color)] text-white"
-            : "bg-coral text-white shadow-[0_2px_8px_hsla(14,72%,62%,0.4)]"
-          : "bg-white/[0.07] text-dark-muted hover:bg-white/[0.1]"
-      )}
-    >
-      {label}
-    </button>
   )
 }

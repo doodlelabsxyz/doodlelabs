@@ -5,42 +5,81 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --color-cream: hsl(42, 38%, 96%);
-  --color-island: hsl(42, 25%, 99%);
-  --color-island-2: hsl(40, 18%, 93%);
-  --color-border: hsl(38, 14%, 88%);
+  /* Night Garden - greens only. Values live in :root / .dark (--c-*), so every
+     utility below flips with the theme automatically. */
+  --color-cream: var(--c-bg);
+  --color-island: var(--c-surface);
+  --color-island-2: var(--c-wash);
+  --color-border: var(--c-border);
 
-  --color-ink: hsl(24, 20%, 11%);
-  --color-muted: hsl(24, 10%, 44%);
-  --color-ghost: hsl(24, 8%, 64%);
+  --color-ink: var(--c-fg);
+  --color-muted: var(--c-muted);
+  --color-ghost: var(--c-ghost);
 
-  --color-dark: #0f1a14;
-  --color-dark-raised: #172219;
-  --color-dark-hover: #1f2e23;
-  --color-dark-text: hsl(42, 22%, 84%);
-  --color-dark-muted: hsl(140, 7%, 48%);
-  --color-dark-ghost: hsl(140, 5%, 30%);
+  /* Always-dark panels (headers / sidebar). Static in both modes. */
+  --color-dark: #070d09;
+  --color-dark-raised: #0e1811;
+  --color-dark-hover: #1c2e22;
+  --color-dark-text: #eef6f1;
+  --color-dark-muted: #8fa899;
+  --color-dark-ghost: #6f8a79;
 
-  --color-brand: #5421a2;
-  --color-brand-light: #e4d9ff;
+  --color-brand: var(--c-primary);
+  --color-brand-light: var(--c-wash);
 
-  --color-coral: hsl(14, 72%, 62%);
-  --color-lemon: hsl(40, 95%, 62%);
-  --color-mint: hsl(161, 58%, 50%);
-  --color-lavender: hsl(268, 60%, 68%);
-  --color-sky: hsl(200, 82%, 58%);
+  /* New semantic tokens */
+  --color-wash: var(--c-wash);
+  --color-sage: var(--c-sage);
+  --color-success-foreground: var(--c-success-fg);
+  --color-danger-foreground: var(--c-danger-fg);
 
-  --color-coral-tint: hsl(14, 72%, 95%);
-  --color-lemon-tint: hsl(40, 90%, 94%);
-  --color-mint-tint: hsl(161, 55%, 93%);
-  --color-lavender-tint: hsl(268, 55%, 95%);
-  --color-sky-tint: hsl(200, 75%, 94%);
+  --color-type-graphic: var(--c-type-graphic);
+  --color-type-graphic-foreground: var(--c-type-graphic-fg);
+  --color-type-video: var(--c-type-video);
+  --color-type-video-foreground: var(--c-type-video-fg);
+  --color-type-video-border: var(--c-type-video-border);
+  --color-type-reel: var(--c-type-reel);
+  --color-type-reel-foreground: var(--c-type-reel-fg);
+  --color-type-story: var(--c-type-story);
+  --color-type-story-foreground: var(--c-type-story-fg);
+  --color-type-story-border: var(--c-type-story-border);
 
-  --color-success: hsl(154, 50%, 40%);
-  --color-danger: hsl(4, 75%, 56%);
-  --color-warning: hsl(35, 92%, 52%);
+  --color-status-neutral: var(--c-st-neutral);
+  --color-status-neutral-fg: var(--c-st-neutral-fg);
+  --color-status-active: var(--c-st-active);
+  --color-status-active-fg: var(--c-st-active-fg);
+  --color-status-done: var(--c-st-done);
+  --color-status-done-fg: var(--c-st-done-fg);
+  --color-status-late: var(--c-st-late);
+  --color-status-late-fg: var(--c-st-late-fg);
+  --color-status-soon: var(--c-st-soon);
+  --color-status-soon-fg: var(--c-st-soon-fg);
 
-  --font-sans: "Plus Jakarta Sans", "Public Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Legacy hue names remapped onto the green family */
+  --color-coral: var(--c-danger);
+  --color-lemon: var(--c-sage-strong);
+  --color-mint: var(--c-mint);
+  --color-lavender: var(--c-sage-strong);
+  --color-sky: var(--c-primary);
+
+  --color-coral-tint: var(--c-danger-tint);
+  --color-lemon-tint: var(--c-sage);
+  --color-mint-tint: var(--c-wash);
+  --color-lavender-tint: var(--c-sage);
+  --color-sky-tint: var(--c-wash);
+
+  /* Text-safe inks (>= 4.5:1 on background, surface and their tint) */
+  --color-coral-ink: var(--c-danger-ink);
+  --color-lemon-ink: var(--c-sage-ink);
+  --color-mint-ink: var(--c-primary-ink);
+  --color-lavender-ink: var(--c-sage-ink);
+  --color-sky-ink: var(--c-primary-ink);
+
+  --color-success: var(--c-success);
+  --color-danger: var(--c-danger);
+  --color-warning: var(--c-primary);
+
+  --font-sans: var(--font-plus-jakarta), "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
   --text-2xs: 0.656rem;
   --text-xs: 0.75rem;
@@ -107,13 +146,57 @@
   --dur-base: 320ms;
   --dur-slow: 480ms;
 
-  --bg: var(--color-cream);
-  --fg: var(--color-ink);
-  --surface: var(--color-island);
-  --surface-raised: var(--color-island-2);
-  --border-color: var(--color-border);
-  --muted: var(--color-muted);
-  --ghost: var(--color-ghost);
+  /* Night Garden - light */
+  --c-bg: #ffffff;
+  --c-surface: #f4faf6;
+  --c-border: #d8eadf;
+  --c-fg: #0c1a12;
+  --c-muted: #5a6e61;
+  --c-ghost: #5a6e61;
+  --c-primary: #14532d;
+  --c-primary-fg: #ffffff;
+  --c-primary-ink: #14532d;
+  --c-wash: #e3f5ea;
+  --c-sage: #e4eedf;
+  --c-sage-strong: #c9ddc2;
+  --c-sage-ink: #2d4a25;
+  --c-mint: #9adbb4;
+  --c-success: #177a4c;
+  --c-success-fg: #ffffff;
+  --c-danger: #c21f2b;
+  --c-danger-fg: #ffffff;
+  --c-danger-tint: #fbe6e8;
+  --c-danger-ink: #9f1823;
+
+  --c-type-graphic: #14532d;
+  --c-type-graphic-fg: #ffffff;
+  --c-type-video: #e3f5ea;
+  --c-type-video-fg: #14532d;
+  --c-type-video-border: #14532d;
+  --c-type-reel: #e4eedf;
+  --c-type-reel-fg: #1f3a28;
+  --c-type-story: transparent;
+  --c-type-story-fg: #14532d;
+  --c-type-story-border: #14532d;
+
+  --c-st-neutral: #eaf0ec;
+  --c-st-neutral-fg: #435349;
+  --c-st-active: #d3eedc;
+  --c-st-active-fg: #14532d;
+  --c-st-done: #d6f0e1;
+  --c-st-done-fg: #0e5a36;
+  --c-st-late: #fbe3e5;
+  --c-st-late-fg: #9f1823;
+  --c-st-soon: #d3eedc;
+  --c-st-soon-fg: #14532d;
+
+  --bg: var(--c-bg);
+  --fg: var(--c-fg);
+  --surface: var(--c-surface);
+  --surface-raised: var(--c-wash);
+  --border-color: var(--c-border);
+  --muted: var(--c-muted);
+  --ghost: var(--c-ghost);
 
   --s1: var(--spacing-s1);
   --s2: var(--spacing-s2);
@@ -128,33 +211,33 @@
   --card-foreground: var(--fg);
   --popover: var(--surface);
   --popover-foreground: var(--fg);
-  --primary: var(--color-brand);
-  --primary-foreground: var(--color-cream);
+  --primary: var(--c-primary);
+  --primary-foreground: var(--c-primary-fg);
   --secondary: var(--surface-raised);
   --secondary-foreground: var(--fg);
-  --muted-foreground: var(--color-muted);
-  --accent: var(--color-brand-light);
-  --accent-foreground: var(--color-brand);
-  --destructive: var(--color-danger);
+  --muted-foreground: var(--c-muted);
+  --accent: var(--c-wash);
+  --accent-foreground: var(--c-primary);
+  --destructive: var(--c-danger);
   --border: var(--border-color);
   --input: var(--border-color);
-  --ring: var(--color-sky);
+  --ring: var(--c-primary);
 
-  --chart-1: var(--color-sky);
-  --chart-2: var(--color-coral);
-  --chart-3: var(--color-lemon);
-  --chart-4: var(--color-mint);
-  --chart-5: var(--color-lavender);
+  --chart-1: #14532d;
+  --chart-2: #2e8b57;
+  --chart-3: #6dbe8c;
+  --chart-4: #a9d9bb;
+  --chart-5: #5a6e61;
 
   --radius: 0.875rem;
-  --sidebar: #0f1a14;
-  --sidebar-foreground: hsl(42 22% 84%);
-  --sidebar-primary: #5421a2;
-  --sidebar-primary-foreground: hsl(42 38% 96%);
-  --sidebar-accent: #1f2e23;
-  --sidebar-accent-foreground: hsl(42 22% 84%);
+  --sidebar: #070d09;
+  --sidebar-foreground: #eef6f1;
+  --sidebar-primary: #5fd08a;
+  --sidebar-primary-foreground: #06150c;
+  --sidebar-accent: #1c2e22;
+  --sidebar-accent-foreground: #eef6f1;
   --sidebar-border: rgb(255 255 255 / 0.07);
-  --sidebar-ring: hsl(200 82% 58%);
+  --sidebar-ring: #5fd08a;
 }
 
 @view-transition {
@@ -218,46 +301,54 @@
 }
 
 .dark {
-  --bg: var(--color-dark);
-  --fg: var(--color-dark-text);
-  --surface: var(--color-dark-raised);
-  --surface-raised: var(--color-dark-hover);
-  --border-color: rgb(255 255 255 / 0.08);
-  --muted: var(--color-dark-muted);
-  --ghost: var(--color-dark-ghost);
+  --c-bg: #070d09;
+  --c-surface: #0e1811;
+  --c-border: #1c2e22;
+  --c-fg: #eef6f1;
+  --c-muted: #8fa899;
+  --c-ghost: #7a9484;
+  --c-primary: #5fd08a;
+  --c-primary-fg: #06150c;
+  --c-primary-ink: #7bdda0;
+  --c-wash: #10231a;
+  --c-sage: #1a2a1d;
+  --c-sage-strong: #2c4630;
+  --c-sage-ink: #b4d2ae;
+  --c-mint: #5fd08a;
+  --c-success: #4fd08f;
+  --c-success-fg: #06150c;
+  --c-danger: #ff6b73;
+  --c-danger-fg: #0a0a0b;
+  --c-danger-tint: #3a1519;
+  --c-danger-ink: #ff9aa0;
 
-  --background: var(--bg);
-  --foreground: var(--fg);
-  --card: var(--surface);
-  --card-foreground: var(--fg);
-  --popover: var(--surface);
-  --popover-foreground: var(--fg);
-  --primary: var(--color-brand);
-  --primary-foreground: var(--color-cream);
-  --secondary: var(--surface-raised);
-  --secondary-foreground: var(--fg);
-  --muted-foreground: var(--color-dark-muted);
-  --accent: color-mix(in srgb, var(--color-brand) 26%, transparent);
-  --accent-foreground: var(--fg);
-  --destructive: var(--color-danger);
-  --border: var(--border-color);
-  --input: var(--border-color);
-  --ring: var(--color-sky);
+  --c-type-graphic: #5fd08a;
+  --c-type-graphic-fg: #06150c;
+  --c-type-video: #10231a;
+  --c-type-video-fg: #7bdda0;
+  --c-type-video-border: #5fd08a;
+  --c-type-reel: #1a2a1d;
+  --c-type-reel-fg: #c4dcc9;
+  --c-type-story: transparent;
+  --c-type-story-fg: #7bdda0;
+  --c-type-story-border: #5fd08a;
 
-  --chart-1: var(--color-sky);
-  --chart-2: var(--color-coral);
-  --chart-3: var(--color-lemon);
-  --chart-4: var(--color-mint);
-  --chart-5: var(--color-lavender);
+  --c-st-neutral: #1a2a1d;
+  --c-st-neutral-fg: #b4c7ba;
+  --c-st-active: #143323;
+  --c-st-active-fg: #7bdda0;
+  --c-st-done: #12301f;
+  --c-st-done-fg: #6be0a0;
+  --c-st-late: #3a1519;
+  --c-st-late-fg: #ff9aa0;
+  --c-st-soon: #143323;
+  --c-st-soon-fg: #7bdda0;
 
-  --sidebar: #0f1a14;
-  --sidebar-foreground: hsl(42 22% 84%);
-  --sidebar-primary: #5421a2;
-  --sidebar-primary-foreground: hsl(42 38% 96%);
-  --sidebar-accent: #1f2e23;
-  --sidebar-accent-foreground: hsl(42 22% 84%);
-  --sidebar-border: rgb(255 255 255 / 0.07);
-  --sidebar-ring: hsl(200 82% 58%);
+  --chart-1: #5fd08a;
+  --chart-2: #3fa56b;
+  --chart-3: #2c7a4e;
+  --chart-4: #a9d9bb;
+  --chart-5: #8fa899;
 }
 
 @layer base {
@@ -290,12 +381,12 @@
   }
 
   ::selection {
-    background: hsl(200 88% 65% / 0.25);
-    color: var(--color-ink);
+    background: color-mix(in srgb, var(--c-primary) 25%, transparent);
+    color: var(--c-fg);
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-sky);
+    outline: 2px solid var(--c-primary);
     outline-offset: 3px;
     border-radius: var(--radius-sm);
   }

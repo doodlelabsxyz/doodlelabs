@@ -6,19 +6,25 @@ import gsap from 'gsap'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { PlanUpgradeWall } from '@/components/PlanUpgradeWall'
+import { usePlanGate } from '@/lib/hooks/usePlanGate'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Progress } from '@/components/ui/progress'
 import { UserAvatar } from '@/components/ui/user-avatar'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import type { ContentType, ContentStatus } from '@/lib/types'
+import { CONTENT_TYPE_STYLE } from '@/lib/color-map'
+import { TypeIcon } from '@/components/ui/type-icon'
+import { isContentOverdue, isTaskOverdue } from '@/lib/overdue'
 
 gsap.registerPlugin(useGSAP)
 
-const TYPE_CFG: Record<ContentType, { label: string; badgeClass: string; barClass: string }> = {
-  graphic: { label: 'Graphic', badgeClass: 'bg-coral/15 text-coral', barClass: 'bg-coral' },
-  video: { label: 'Video', badgeClass: 'bg-lemon/20 text-amber-700', barClass: 'bg-lemon' },
-  reel: { label: 'Reel', badgeClass: 'bg-mint/15 text-mint', barClass: 'bg-mint' },
-  story: { label: 'Story', badgeClass: 'bg-lavender/15 text-lavender', barClass: 'bg-lavender' },
+const TYPE_LABEL: Record<ContentType, string> = {
+  graphic: 'Graphic',
+  video: 'Video',
+  reel: 'Reel',
+  story: 'Story',
 }
 
 type ContentRow = {
@@ -46,6 +52,7 @@ type TaskRow = {
   id: string
   assigned_to: string
   status: string
+  due_date: string
 }
 
 type StatusSummary = {
@@ -53,6 +60,7 @@ type StatusSummary = {
   label: string
   count: number
   className: string
+  dotClass: string
   progressClass: string
 }
 
@@ -96,9 +104,40 @@ function MetricBox({
   )
 }
 
+function AnalyticsSkeleton() {
+  return (
+    <main className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto" aria-busy="true" aria-label="Loading analytics">
+      <section className="border-b border-border bg-background px-5 pt-[18px] pb-[14px]">
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <p className="mb-px text-2xs uppercase tracking-[0.08em] text-muted-foreground">Admin</p>
+            <h1 className="text-md font-extrabold leading-none text-foreground">Analytics</h1>
+          </div>
+          <Skeleton className="h-8 w-56 rounded-md" />
+        </div>
+      </section>
+      <div className="flex flex-col gap-4 p-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+          {Array.from({ length: 5 }, (_, i) => (
+            <Skeleton key={i} className="h-[86px] rounded-xl" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {Array.from({ length: 4 }, (_, i) => (
+            <Skeleton key={i} className="h-52 rounded-xl" />
+          ))}
+        </div>
+      </div>
+    </main>
+  )
+}
+
 export default function AnalyticsPage() {
   const metricsRef = useRef<HTMLDivElement>(null)
+  const { allowed: analyticsAllowed, requiredPlan, loading: gateLoading } = usePlanGate('hasAnalytics')
   const [mounted, setMounted] = useState(false)
+  const [error, setError] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
   const [period, setPeriod] = useState<'week' | 'month' | 'all'>('month')
   const [content, setContent] = useState<ContentRow[]>([])
   const [clients, setClients] = useState<ClientRow[]>([])
@@ -106,19 +145,42 @@ export default function AnalyticsPage() {
   const [tasks, setTasks] = useState<TaskRow[]>([])
 
   useEffect(() => {
-    async function load() {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) return
+    let ignore = false
 
-      const [cntRes, cliRes, usrRes, tskRes] = await Promise.all([
-        supabase.from('content_pieces').select('id, client_id, type, status, scheduled_date'),
-        supabase.from('clients').select('id, name, brand_color, initials'),
-        supabase.from('users').select('id, name, role').neq('role', 'client'),
-        supabase.from('tasks').select('id, assigned_to, status'),
-      ])
+    async function load() {
+      setError(false)
+      setMounted(false)
+      const supabase = createClient()
+      let cntRes, cliRes, usrRes, tskRes
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (ignore) return
+        if (!user) {
+          setMounted(true)
+          return
+        }
+
+        ;[cntRes, cliRes, usrRes, tskRes] = await Promise.all([
+          supabase.from('content_pieces').select('id, client_id, type, status, scheduled_date'),
+          supabase.from('clients').select('id, name, brand_color, initials'),
+          supabase.from('users').select('id, name, role').neq('role', 'client'),
+          supabase.from('tasks').select('id, assigned_to, status, due_date'),
+        ])
+      } catch {
+        if (ignore) return
+        setError(true)
+        setMounted(true)
+        return
+      }
+
+      if (ignore) return
+      if (cntRes.error || cliRes.error || usrRes.error || tskRes.error) {
+        setError(true)
+        setMounted(true)
+        return
+      }
 
       setContent((cntRes.data || []) as ContentRow[])
       setClients((cliRes.data || []) as ClientRow[])
@@ -128,7 +190,11 @@ export default function AnalyticsPage() {
     }
 
     void load()
-  }, [])
+
+    return () => {
+      ignore = true
+    }
+  }, [reloadKey])
 
   useGSAP(() => {
     if (!mounted || !metricsRef.current) return
@@ -139,7 +205,20 @@ export default function AnalyticsPage() {
     )
   }, { dependencies: [mounted, period], scope: metricsRef })
 
-  if (!mounted) return null
+  if (!gateLoading && !analyticsAllowed) {
+    return <PlanUpgradeWall feature="Analytics" requiredPlan={requiredPlan} />
+  }
+  if (gateLoading || !mounted) return <AnalyticsSkeleton />
+
+  if (error) {
+    return (
+      <main className="page-main flex min-w-0 flex-1 flex-col items-center justify-center gap-3 p-10 text-center" role="alert">
+        <p className="text-sm font-bold text-foreground">Couldn&apos;t load analytics</p>
+        <p className="text-xs text-muted-foreground">Something went wrong while fetching your data.</p>
+        <Button variant="outline" size="sm" onClick={() => setReloadKey(k => k + 1)}>Try again</Button>
+      </main>
+    )
+  }
 
   const now = new Date()
   const filtered = content.filter(c => {
@@ -156,7 +235,7 @@ export default function AnalyticsPage() {
 
   const total = filtered.length
   const posted = filtered.filter(c => c.status === 'posted' || c.status === 'approved').length
-  const overdue = filtered.filter(c => c.status === 'overdue').length
+  const overdue = filtered.filter(isContentOverdue).length
   const inProd = filtered.filter(c =>
     ['in-design', 'in-editing', 'ready-for-review', 'brief-ready'].includes(c.status)
   ).length
@@ -174,19 +253,19 @@ export default function AnalyticsPage() {
         client,
         total: clientContent.length,
         posted: clientContent.filter(c => c.status === 'posted' || c.status === 'approved').length,
-        overdue: clientContent.filter(c => c.status === 'overdue').length,
+        overdue: clientContent.filter(isContentOverdue).length,
       }
     })
     .filter(s => s.total > 0)
 
   const statusCounts: StatusSummary[] = [
-    { status: 'planned', label: 'Planned', count: filtered.filter(c => c.status === 'planned').length, className: 'text-muted-foreground', progressClass: '[&_[data-slot=progress-indicator]]:bg-muted-foreground' },
-    { status: 'brief-ready', label: 'Brief', count: filtered.filter(c => c.status === 'brief-ready').length, className: 'text-sky', progressClass: '[&_[data-slot=progress-indicator]]:bg-sky' },
-    { status: 'in-design', label: 'Design', count: filtered.filter(c => c.status === 'in-design').length, className: 'text-coral', progressClass: '[&_[data-slot=progress-indicator]]:bg-coral' },
-    { status: 'in-editing', label: 'Editing', count: filtered.filter(c => c.status === 'in-editing').length, className: 'text-amber-700', progressClass: '[&_[data-slot=progress-indicator]]:bg-lemon' },
-    { status: 'ready-for-review', label: 'Review', count: filtered.filter(c => c.status === 'ready-for-review').length, className: 'text-lavender', progressClass: '[&_[data-slot=progress-indicator]]:bg-lavender' },
-    { status: 'approved', label: 'Approved', count: filtered.filter(c => c.status === 'approved').length, className: 'text-success', progressClass: '[&_[data-slot=progress-indicator]]:bg-success' },
-    { status: 'overdue', label: 'Overdue', count: overdue, className: 'text-danger', progressClass: '[&_[data-slot=progress-indicator]]:bg-danger' },
+    { status: 'planned', label: 'Planned', count: filtered.filter(c => c.status === 'planned').length, className: 'text-muted', dotClass: 'bg-muted', progressClass: '[&_[data-slot=progress-indicator]]:bg-muted' },
+    { status: 'brief-ready', label: 'Brief', count: filtered.filter(c => c.status === 'brief-ready').length, className: 'text-primary', dotClass: 'bg-primary/60', progressClass: '[&_[data-slot=progress-indicator]]:bg-primary/60' },
+    { status: 'in-design', label: 'Design', count: filtered.filter(c => c.status === 'in-design').length, className: 'text-primary', dotClass: 'bg-primary/80', progressClass: '[&_[data-slot=progress-indicator]]:bg-primary/80' },
+    { status: 'in-editing', label: 'Editing', count: filtered.filter(c => c.status === 'in-editing').length, className: 'text-primary', dotClass: 'bg-primary', progressClass: '[&_[data-slot=progress-indicator]]:bg-primary' },
+    { status: 'ready-for-review', label: 'Review', count: filtered.filter(c => c.status === 'ready-for-review').length, className: 'text-sage-ink', dotClass: 'bg-sage-ink', progressClass: '[&_[data-slot=progress-indicator]]:bg-sage-ink' },
+    { status: 'approved', label: 'Approved', count: filtered.filter(c => c.status === 'approved').length, className: 'text-success', dotClass: 'bg-success', progressClass: '[&_[data-slot=progress-indicator]]:bg-success' },
+    { status: 'overdue', label: 'Overdue', count: overdue, className: 'text-danger', dotClass: 'bg-danger', progressClass: '[&_[data-slot=progress-indicator]]:bg-danger' },
   ]
   const maxStatusCount = Math.max(...statusCounts.map(s => s.count), 1)
 
@@ -198,7 +277,7 @@ export default function AnalyticsPage() {
         user: u,
         total: userTasks.length,
         done: userTasks.filter(t => t.status === 'done').length,
-        overdue: userTasks.filter(t => t.status === 'overdue').length,
+        overdue: userTasks.filter(isTaskOverdue).length,
       }
     })
 
@@ -217,7 +296,7 @@ export default function AnalyticsPage() {
                 variant={period === p ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setPeriod(p)}
-                className={cn(period === p && 'bg-coral text-white hover:bg-coral/85')}
+                className={cn(period === p && 'bg-primary text-primary-foreground hover:bg-primary/85')}
               >
                 {p === 'all' ? 'All Time' : p === 'week' ? 'This Week' : 'This Month'}
               </Button>
@@ -232,10 +311,10 @@ export default function AnalyticsPage() {
           data-animate="analytics-card"
         >
           {[
-            { value: total, label: 'Total Content', accentClass: 'bg-coral' },
+            { value: total, label: 'Total Content', accentClass: 'bg-primary' },
             { value: posted, label: 'Posted / Approved', accentClass: 'bg-success' },
-            { value: inProd, label: 'In Production', accentClass: 'bg-sky' },
-            { value: planned, label: 'Planned', accentClass: 'bg-lemon' },
+            { value: inProd, label: 'In Production', accentClass: 'bg-primary/60' },
+            { value: planned, label: 'Planned', accentClass: 'bg-sage' },
             { value: overdue, label: 'Overdue', accentClass: 'bg-danger' },
           ].map(m => (
             <MetricBox key={m.label} {...m} />
@@ -250,16 +329,18 @@ export default function AnalyticsPage() {
                 <p className="text-sm text-muted-foreground">No content in this period.</p>
               ) : (
                 <>
-                  <div className="mb-3.5 flex h-2.5 overflow-hidden rounded-full">
+                  <div className="mb-3.5 flex h-3 gap-0.5 overflow-hidden rounded-full">
                     {(Object.entries(typeCounts) as [ContentType, number][]).map(([t, n]) =>
-                      n > 0 ? <div key={t} className={TYPE_CFG[t].barClass} style={{ flex: n }} /> : null
+                      n > 0 ? <div key={t} className={cn('h-full', CONTENT_TYPE_STYLE[t].className)} style={{ flex: n }} /> : null
                     )}
                   </div>
                   <div className="flex flex-col gap-2">
                     {(Object.entries(typeCounts) as [ContentType, number][]).map(([t, n]) => (
                       <div key={t} className="flex items-center gap-2.5">
-                        <div className={cn('size-2.5 rounded-[3px] shrink-0', TYPE_CFG[t].barClass)} />
-                        <span className="flex-1 text-sm font-semibold text-foreground">{TYPE_CFG[t].label}</span>
+                        <span className={cn('flex size-5 shrink-0 items-center justify-center rounded-md', CONTENT_TYPE_STYLE[t].className)}>
+                          <TypeIcon name={CONTENT_TYPE_STYLE[t].icon} className="size-2.5" />
+                        </span>
+                        <span className="flex-1 text-sm font-semibold text-foreground">{TYPE_LABEL[t]}</span>
                         <span className="text-sm font-extrabold text-foreground">{n}</span>
                         <span className="min-w-9 text-right text-xs text-ghost">
                           {total > 0 ? Math.round((n / total) * 100) : 0}%
@@ -278,7 +359,7 @@ export default function AnalyticsPage() {
               <div className="flex flex-col gap-2">
                 {statusCounts.map(s => (
                   <div key={s.status} className="flex items-center gap-2.5">
-                    <div className={cn('size-2 rounded-full shrink-0', s.className.replace('text-', 'bg-'))} />
+                    <div className={cn('size-2 rounded-full shrink-0', s.dotClass)} />
                     <span className="min-w-14 text-xs font-semibold text-foreground">{s.label}</span>
                     <Progress
                       value={(s.count / maxStatusCount) * 100}
@@ -303,23 +384,17 @@ export default function AnalyticsPage() {
                     return (
                       <div key={client.id}>
                         <div className="mb-1.5 flex items-center gap-2.5">
-                          <div
-                            style={{ '--client-color': client.brand_color } as React.CSSProperties}
-                            className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-[var(--client-color)] text-[10px] font-extrabold text-white"
-                          >
+                          <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-[10px] font-extrabold text-primary-foreground">
                             {client.initials}
                           </div>
                           <span className="flex-1 text-sm font-bold text-foreground">{client.name}</span>
-                          <span
-                            style={{ '--client-color': client.brand_color } as React.CSSProperties}
-                            className="text-sm font-bold text-[var(--client-color)]"
-                          >
+                          <span className="text-sm font-bold text-primary">
                             {pct}%
                           </span>
                         </div>
                         <div className="flex h-1.5 gap-1 overflow-hidden rounded-full">
-                          <div className="bg-success" style={{ flex: cp }} />
-                          <div className="bg-sky" style={{ flex: Math.max(ct - cp - co, 0) }} />
+                          <div className="bg-primary" style={{ flex: cp }} />
+                          <div className="bg-mint" style={{ flex: Math.max(ct - cp - co, 0) }} />
                           {co > 0 && <div className="bg-danger" style={{ flex: co }} />}
                         </div>
                         <div className="mt-1 flex gap-3 text-[0.6rem] text-ghost">

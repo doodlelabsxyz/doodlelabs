@@ -25,11 +25,11 @@ export function SectionHeader({
     >
       <div className="min-w-0">
         {eyebrow && (
-          <p className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-muted">
+          <p className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             {eyebrow}
           </p>
         )}
-        <h2 className="truncate text-[0.9rem] font-semibold text-ink">
+        <h2 className="truncate text-[0.9rem] font-semibold text-foreground">
           {title}
         </h2>
       </div>

@@ -22,10 +22,10 @@ import {
 function LogoMark() {
   return (
     <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true" className="shrink-0">
-      <rect width="30" height="30" rx="9" fill="var(--color-brand)" />
+      <rect width="30" height="30" rx="9" fill="var(--color-primary)" />
       <path
         d="M9 22 L15 8 L21 22 M11.5 17.5 H18.5"
-        stroke="hsl(42, 30%, 99%)"
+        stroke="var(--color-primary-foreground)"
         strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -35,7 +35,7 @@ function LogoMark() {
 }
 
 function NavIcon({ name, active }: { name: NavItem['icon']; active: boolean }) {
-  const col = active ? 'var(--color-cream)' : 'var(--color-dark-muted)'
+  const col = active ? 'var(--color-sidebar-primary)' : 'var(--color-dark-muted)'
 
   const map: Record<NavItem['icon'], React.ReactElement> = {
     home: (
@@ -137,6 +137,13 @@ function NavIcon({ name, active }: { name: NavItem['icon']; active: boolean }) {
         <path d="M18 20V10M12 20V4M6 20v-6" stroke={col} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     ),
+    assets: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="3" stroke={col} strokeWidth="1.9"/>
+        <circle cx="8.5" cy="8.5" r="1.5" fill={col}/>
+        <path d="M21 15l-5-5L5 21" stroke={col} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
   }
   return map[name] ?? null
 }
@@ -209,14 +216,14 @@ function UserMenu({ userName, userRole, userInitials, userColor, onLogout }: Omi
           <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
           <div
             className={cn(
-              'absolute bottom-full z-20 mb-1.5 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#1a2e22] shadow-[0_-8px_24px_rgba(0,0,0,0.3)]',
+              'absolute bottom-full z-20 mb-1.5 overflow-hidden rounded-2xl border border-dark-text/[0.1] bg-dark-hover shadow-[0_-8px_24px_rgb(0_0_0/0.3)]',
               collapsed ? 'left-[68px] min-w-40' : 'left-3 right-3'
             )}
           >
             <Link
               href="/settings"
               onClick={() => setShowMenu(false)}
-              className="flex items-center gap-2.5 px-3.5 py-3 no-underline text-dark-text text-[0.82rem] font-semibold hover:bg-white/[0.06] transition-colors"
+              className="flex items-center gap-2.5 px-3.5 py-3 no-underline text-dark-text text-[0.82rem] font-semibold hover:bg-dark-text/[0.08] transition-colors"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="12" r="3" stroke="var(--color-dark-muted)" strokeWidth="1.8"/>
@@ -224,10 +231,10 @@ function UserMenu({ userName, userRole, userInitials, userColor, onLogout }: Omi
               </svg>
               Settings
             </Link>
-            <div className="h-px bg-white/[0.06] mx-3" />
+            <div className="h-px bg-dark-text/[0.08] mx-3" />
             <button
               onClick={() => { setShowMenu(false); onLogout() }}
-              className="w-full flex items-center gap-2.5 px-3.5 py-3 bg-transparent border-none cursor-pointer text-[0.82rem] font-semibold text-left text-coral hover:bg-white/[0.06] transition-colors"
+              className="w-full flex items-center gap-2.5 px-3.5 py-3 bg-transparent border-none cursor-pointer text-[0.82rem] font-semibold text-left text-[color-mix(in_srgb,var(--color-danger)_60%,white)] hover:bg-dark-text/[0.08] transition-colors"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
@@ -240,11 +247,11 @@ function UserMenu({ userName, userRole, userInitials, userColor, onLogout }: Omi
       <button
         onClick={() => setShowMenu(v => !v)}
         title={collapsed ? `${userName} (${userRole})` : undefined}
-        className="w-full flex items-center h-[52px] bg-transparent border-none cursor-pointer border-t border-white/[0.06] hover:bg-white/[0.05] transition-colors overflow-hidden px-2"
+        className="w-full flex items-center h-[52px] bg-transparent border-none cursor-pointer border-t border-dark-text/[0.08] hover:bg-dark-text/[0.06] transition-colors overflow-hidden px-2"
       >
         <div
           style={{ '--avatar-color': userColor } as React.CSSProperties}
-          className="mx-auto flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-full bg-[var(--avatar-color)] text-[0.6rem] font-extrabold text-white"
+          className="mx-auto flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-full bg-[var(--avatar-color)] text-[0.6rem] font-extrabold text-dark-text"
         >
           {userInitials}
         </div>
@@ -290,10 +297,10 @@ export function AppSidebar({ items, userName, userRole, userInitials, userColor,
             <div className="flex-1 min-w-0 ml-2 overflow-hidden">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="font-bold text-sm text-sidebar-foreground tracking-tight whitespace-nowrap">
-                  Agency<span className="text-brand">OS</span>
+                  Agency<span className="text-sidebar-primary">OS</span>
                 </span>
                 {orgPlan && (
-                  <span className="rounded-full bg-brand/20 px-1.5 py-0.5 text-[0.48rem] font-bold uppercase tracking-wide whitespace-nowrap text-brand-light">
+                  <span className="rounded-full bg-sidebar-primary/20 px-1.5 py-0.5 text-[0.48rem] font-bold uppercase tracking-wide whitespace-nowrap text-sidebar-primary">
                     {orgPlan}
                   </span>
                 )}
@@ -326,14 +333,14 @@ export function AppSidebar({ items, userName, userRole, userInitials, userColor,
                     className="h-[38px] rounded-[10px] relative"
                   >
                     {isActive && (
-                      <div className="absolute left-0 top-[20%] h-[60%] w-[3px] rounded-r-[3px] bg-cream" />
+                      <div className="absolute left-0 top-[20%] h-[60%] w-[3px] rounded-r-[3px] bg-sidebar-primary" />
                     )}
                     <NavIcon name={item.icon} active={isActive} />
                     <span className="text-sm">
                       {item.label}
                     </span>
                     {item.icon === 'notifications' && notifCount > 0 && (
-                      <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-cream px-1.5 text-[0.6rem] font-bold text-brand">
+                      <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-sidebar-primary px-1.5 text-[0.6rem] font-bold text-sidebar-primary-foreground">
                         {notifCount}
                       </span>
                     )}

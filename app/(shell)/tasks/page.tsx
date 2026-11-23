@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
@@ -9,19 +9,18 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Skeleton } from '@/components/ui/skeleton'
+import { useToast } from '@/components/ui/toaster'
 import { UserAvatar } from '@/components/ui/user-avatar'
 import { cn } from '@/lib/utils'
+import { CONTENT_TYPE_STYLE } from '@/lib/color-map'
+import { TypeIcon } from '@/components/ui/type-icon'
 import { createClient } from '@/lib/supabase/client'
 import type { TaskStatus, ContentType, ContentStatus, Role } from '@/lib/types'
+import { isTaskOverdue } from '@/lib/overdue'
 
 gsap.registerPlugin(useGSAP)
-
-const TYPE_CFG: Record<ContentType, { label: string; badgeClass: string }> = {
-  graphic: { label: 'Graphic', badgeClass: 'bg-coral text-white' },
-  video: { label: 'Video', badgeClass: 'bg-lemon text-amber-950' },
-  reel: { label: 'Reel', badgeClass: 'bg-mint text-white' },
-  story: { label: 'Story', badgeClass: 'bg-lavender text-white' },
-}
 
 const STATUS_GROUPS: {
   key: TaskStatus
@@ -32,28 +31,41 @@ const STATUS_GROUPS: {
   {
     key: 'overdue',
     label: 'Overdue',
-    chipClass: 'bg-danger/15 text-danger',
+    chipClass: 'bg-status-late text-status-late-fg',
     dotClass: 'bg-danger',
   },
   {
     key: 'in-progress',
     label: 'In Progress',
-    chipClass: 'bg-sky/15 text-sky',
-    dotClass: 'bg-sky',
+    chipClass: 'bg-status-active text-status-active-fg',
+    dotClass: 'bg-primary',
   },
   {
     key: 'pending',
     label: 'To Do',
-    chipClass: 'bg-lemon/20 text-amber-700',
-    dotClass: 'bg-lemon',
+    chipClass: 'bg-status-neutral text-status-neutral-fg',
+    dotClass: 'bg-muted-foreground',
   },
   {
     key: 'done',
     label: 'Done',
-    chipClass: 'bg-success/15 text-success',
+    chipClass: 'bg-status-done text-status-done-fg',
     dotClass: 'bg-success',
   },
 ]
+
+/**
+ * 'overdue' isn't a real, mutually-exclusive task status (a task is always
+ * pending/in-progress/done — nothing ever sets status='overdue') — it's a
+ * pending or in-progress task whose due_date has passed. Group membership
+ * has to reflect that: the "Overdue" bucket pulls in overdue pending/
+ * in-progress tasks, and the "To Do"/"In Progress" buckets exclude them so a
+ * task doesn't render twice when viewing "All".
+ */
+function tasksInGroup<T extends { status: TaskStatus; due_date: string | null }>(tasks: T[], key: TaskStatus): T[] {
+  if (key === 'overdue') return tasks.filter(isTaskOverdue)
+  return tasks.filter(t => t.status === key && !isTaskOverdue(t))
+}
 
 const ROLE_ADVANCES: Partial<Record<string, ContentStatus>> = {
   writer: 'brief-ready',
@@ -144,6 +156,7 @@ function StatChip({
 
 export default function TasksPage() {
   const router = useRouter()
+  const { success, error: toastError } = useToast()
   const listRef = useRef<HTMLDivElement>(null)
 
   const [mounted, setMounted] = useState(false)
@@ -152,6 +165,8 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<TaskRow[]>([])
   const [filter, setFilter] = useState<TaskStatus | 'all'>('all')
   const [loading, setLoading] = useState(true)
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
+  const busyRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     async function load() {
@@ -217,42 +232,78 @@ export default function TasksPage() {
     )
   }, { dependencies: [mounted, filter], scope: listRef })
 
-  const filtered = filter === 'all' ? tasks : tasks.filter(t => t.status === filter)
+  const filtered = filter === 'all' ? tasks : tasksInGroup(tasks, filter)
 
-  const overdue = tasks.filter(t => t.status === 'overdue').length
-  const inProgress = tasks.filter(t => t.status === 'in-progress').length
-  const pending = tasks.filter(t => t.status === 'pending').length
-  const done = tasks.filter(t => t.status === 'done').length
+  const overdue = tasksInGroup(tasks, 'overdue').length
+  const inProgress = tasksInGroup(tasks, 'in-progress').length
+  const pending = tasksInGroup(tasks, 'pending').length
+  const done = tasksInGroup(tasks, 'done').length
+  const upNext = tasks
+    .filter(t => t.status !== 'done')
+    .sort((a, b) => a.due_date.localeCompare(b.due_date))
+    .slice(0, 5)
 
-  const updateStatus = useCallback(
-    async (taskId: string, newStatus: TaskStatus) => {
-      setTasks(prev => prev.map(t => (t.id === taskId ? { ...t, status: newStatus } : t)))
+  function setBusy(taskId: string, on: boolean) {
+    if (on) busyRef.current.add(taskId)
+    else busyRef.current.delete(taskId)
+    setBusyIds(new Set(busyRef.current))
+  }
 
+  async function updateStatus(taskId: string, newStatus: TaskStatus) {
+    if (busyRef.current.has(taskId)) return
+    const task = tasks.find(t => t.id === taskId)
+    if (!task) return
+    const prevStatus = task.status
+    setBusy(taskId, true)
+    setTasks(prev => prev.map(t => (t.id === taskId ? { ...t, status: newStatus } : t)))
+
+    try {
       const supabase = createClient()
-      await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId)
+      const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId)
+      if (error) {
+        setTasks(prev => prev.map(t => (t.id === taskId ? { ...t, status: prevStatus } : t)))
+        toastError("Couldn't update task. Please try again.")
+        return
+      }
 
+      let stageFailed = false
       if (newStatus === 'done') {
-        const task = tasks.find(t => t.id === taskId)
-        const cp = task?.content_pieces
-        if (task?.content_id && cp) {
+        const cp = task.content_pieces
+        if (task.content_id && cp) {
           const targetStatus = ROLE_ADVANCES[task.role]
           if (targetStatus) {
             const currentIdx = STATUS_ORDER.indexOf(cp.status)
             const targetIdx = STATUS_ORDER.indexOf(targetStatus)
             if (currentIdx >= 0 && currentIdx < targetIdx) {
-              await supabase.from('content_pieces').update({ status: targetStatus }).eq('id', task.content_id)
+              const { error: stageError } = await supabase
+                .from('content_pieces')
+                .update({ status: targetStatus })
+                .eq('id', task.content_id)
+              if (stageError) stageFailed = true
             }
           }
         }
       }
-    },
-    [tasks]
-  )
+
+      if (stageFailed) {
+        toastError('Task marked done, but the content stage could not advance.')
+      } else {
+        success(
+          newStatus === 'done' ? 'Marked done' : newStatus === 'in-progress' ? 'Task started' : 'Moved back to To Do'
+        )
+      }
+    } catch {
+      setTasks(prev => prev.map(t => (t.id === taskId ? { ...t, status: prevStatus } : t)))
+      toastError("Couldn't update task. Please try again.")
+    } finally {
+      setBusy(taskId, false)
+    }
+  }
 
   function toggleDone(taskId: string) {
     const task = tasks.find(t => t.id === taskId)
     if (!task) return
-    updateStatus(taskId, task.status === 'done' ? 'pending' : 'done')
+    void updateStatus(taskId, task.status === 'done' ? 'pending' : 'done')
   }
 
   function advanceStatus(taskId: string) {
@@ -260,15 +311,13 @@ export default function TasksPage() {
     if (!task) return
     const flow: TaskStatus[] = ['pending', 'in-progress', 'done']
     const idx = flow.indexOf(task.status)
-    if (idx >= 0 && idx < flow.length - 1) updateStatus(taskId, flow[idx + 1])
-    else if (task.status === 'overdue') updateStatus(taskId, 'in-progress')
+    if (idx >= 0 && idx < flow.length - 1) void updateStatus(taskId, flow[idx + 1])
   }
-
-  if (!mounted) return null
 
   return (
     <main className="page-main flex min-w-0 flex-1 flex-col overflow-y-auto">
-      <section className="border-b border-white/4 bg-dark px-5 pt-[18px] pb-[14px]">
+      <section className="border-b border-white/4 bg-dark px-5 pt-[18px] pb-[14px] lg:px-6">
+       <div className="mx-auto w-full max-w-6xl">
         <div className="mb-3 flex items-center gap-3">
           <div className="flex-1">
             <p className="mb-px text-2xs uppercase tracking-[0.08em] text-dark-muted">
@@ -279,8 +328,8 @@ export default function TasksPage() {
 
           <div className="flex items-center gap-3">
             {overdue > 0 && <StatChip value={overdue} label="overdue" valueClass="text-danger" />}
-            <StatChip value={inProgress} label="active" valueClass="text-sky" />
-            <StatChip value={pending} label="to do" valueClass="text-lemon" />
+            <StatChip value={inProgress} label="active" valueClass="text-mint" />
+            <StatChip value={pending} label="to do" valueClass="text-dark-text" />
             <StatChip value={done} label="done" valueClass="text-success" />
           </div>
         </div>
@@ -289,11 +338,11 @@ export default function TasksPage() {
           <FilterPill
             label="All"
             active={filter === 'all'}
-            colorClass="bg-coral text-white"
+            colorClass="bg-mint text-dark"
             onClick={() => setFilter('all')}
           />
           {STATUS_GROUPS.map(g => {
-            const count = tasks.filter(t => t.status === g.key).length
+            const count = tasksInGroup(tasks, g.key).length
             return (
               <FilterPill
                 key={g.key}
@@ -305,32 +354,30 @@ export default function TasksPage() {
             )
           })}
         </div>
+       </div>
       </section>
 
-      <div ref={listRef} className="flex-1 p-4">
+      <div ref={listRef} className="flex-1 p-4 lg:p-6">
+       <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0">
         {loading ? (
-          <div className="flex justify-center px-5 py-15">
-            <p className="text-sm text-muted-foreground">Loading tasks...</p>
+          <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading tasks">
+            {[0, 1, 2, 3].map(i => (
+              <Skeleton key={i} className="h-28 w-full rounded-xl" />
+            ))}
           </div>
         ) : filtered.length === 0 ? (
-          <Card className="border border-dashed border-border bg-card shadow-none">
-            <CardContent className="flex flex-col items-center justify-center gap-3 py-15 text-center">
-              <div className="flex size-[72px] items-center justify-center rounded-[18px] border border-dashed border-border bg-secondary">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="opacity-30">
-                  <rect x="3" y="4" width="18" height="16" rx="3" stroke="currentColor" strokeWidth="1.5" />
-                  <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </div>
-              <p className="text-sm font-semibold text-muted-foreground">
-                {filter === 'all'
-                  ? 'No tasks assigned'
-                  : `No ${STATUS_GROUPS.find(g => g.key === filter)?.label.toLowerCase()} tasks`}
-              </p>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon="✅"
+            title={
+              filter === 'all'
+                ? 'No tasks assigned'
+                : `No ${STATUS_GROUPS.find(g => g.key === filter)?.label.toLowerCase()} tasks`
+            }
+          />
         ) : (
           STATUS_GROUPS.filter(g => filter === 'all' || filter === g.key).map(group => {
-            const groupTasks = filtered.filter(t => t.status === group.key)
+            const groupTasks = tasksInGroup(filtered, group.key)
             if (groupTasks.length === 0) return null
 
             return (
@@ -349,9 +396,10 @@ export default function TasksPage() {
                   {groupTasks.map(task => {
                     const content = task.content_pieces
                     const client = task.clients
-                    const cfg = content ? TYPE_CFG[content.type] : null
+                    const cfg = content ? CONTENT_TYPE_STYLE[content.type] : null
                     const isDone = task.status === 'done'
-                    const isOverdue = task.status === 'overdue'
+                    const isOverdue = isTaskOverdue(task)
+                    const isBusy = busyIds.has(task.id)
 
                     return (
                       <Card
@@ -368,9 +416,11 @@ export default function TasksPage() {
                             <Checkbox
                               checked={isDone}
                               onCheckedChange={() => toggleDone(task.id)}
+                              disabled={isBusy}
+                              aria-busy={isBusy}
                               className={cn(
                                 isOverdue && !isDone && 'border-danger text-danger',
-                                isDone && 'border-success bg-success text-white'
+                                isDone && 'border-success bg-success text-success-foreground'
                               )}
                             />
                           </div>
@@ -386,7 +436,8 @@ export default function TasksPage() {
                                 {task.title}
                               </p>
                               {cfg && (
-                                <Badge className={cn('border-0 text-[0.55rem] font-bold', cfg.badgeClass)}>
+                                <Badge className={cn('gap-1 text-[0.55rem] font-bold', cfg.className)}>
+                                  <TypeIcon name={cfg.icon} className="size-2" />
                                   {cfg.label}
                                 </Badge>
                               )}
@@ -434,7 +485,9 @@ export default function TasksPage() {
                                   variant="secondary"
                                   size="xs"
                                   onClick={() => advanceStatus(task.id)}
-                                  className="bg-secondary text-muted-foreground hover:bg-coral hover:text-white"
+                                  disabled={isBusy}
+                                  aria-busy={isBusy}
+                                  className="min-h-11 px-4 md:min-h-0 md:px-2 bg-secondary text-muted-foreground hover:bg-primary hover:text-primary-foreground"
                                 >
                                   {task.status === 'pending'
                                     ? 'Start'
@@ -444,12 +497,23 @@ export default function TasksPage() {
                                 </Button>
                               )}
 
+                              {content && ['designer', 'videographer', 'editor'].includes(role) && (
+                                <Button
+                                  variant="outline"
+                                  size="xs"
+                                  onClick={() => router.push(`/assets?content=${content.id}`)}
+                                  className="min-h-11 px-4 text-primary md:min-h-0 md:px-2"
+                                >
+                                  Upload
+                                </Button>
+                              )}
+
                               {content && (
                                 <Button
                                   variant="outline"
                                   size="xs"
                                   onClick={() => router.push(`/brief/${content.id}`)}
-                                  className="text-sky"
+                                  className="min-h-11 px-4 text-primary md:min-h-0 md:px-2"
                                 >
                                   Brief
                                 </Button>
@@ -465,6 +529,69 @@ export default function TasksPage() {
             )
           })
         )}
+        </div>
+
+        {!loading && (
+          <aside className="hidden lg:block" aria-label="Task summary">
+            <div className="sticky top-6 flex flex-col gap-4">
+              <Card className="gap-0 border-border py-0 shadow-none">
+                <CardContent className="py-5">
+                  <p className="mb-3 text-sm font-bold text-foreground">Summary</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label: 'Overdue', value: overdue, cls: 'text-danger' },
+                      { label: 'In progress', value: inProgress, cls: 'text-primary' },
+                      { label: 'To do', value: pending, cls: 'text-foreground' },
+                      { label: 'Done', value: done, cls: 'text-success' },
+                    ].map(s => (
+                      <div key={s.label} className="rounded-xl bg-secondary/60 px-3 py-2.5">
+                        <p className={cn('text-xl leading-none font-extrabold', s.cls)}>{s.value}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{s.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="gap-0 border-border py-0 shadow-none">
+                <CardContent className="py-5">
+                  <p className="mb-3 text-sm font-bold text-foreground">Up next</p>
+                  {upNext.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nothing due. You&apos;re all caught up.</p>
+                  ) : (
+                    <ul className="flex flex-col gap-1">
+                      {upNext.map(t => {
+                        const od = isTaskOverdue(t)
+                        return (
+                          <li key={t.id}>
+                            <button
+                              type="button"
+                              disabled={!t.content_pieces}
+                              onClick={() => t.content_pieces && router.push(`/brief/${t.content_pieces.id}`)}
+                              className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-secondary/70 disabled:cursor-default disabled:hover:bg-transparent"
+                            >
+                              <span className={cn('size-2 shrink-0 rounded-full', od ? 'bg-danger' : 'bg-primary')} />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-semibold text-foreground">{t.title}</span>
+                                {t.clients && (
+                                  <span className="block truncate text-xs text-muted-foreground">{t.clients.name}</span>
+                                )}
+                              </span>
+                              <span className={cn('shrink-0 text-xs font-semibold', od ? 'text-danger' : 'text-ghost')}>
+                                {relDate(t.due_date)}
+                              </span>
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </aside>
+        )}
+       </div>
       </div>
     </main>
   )

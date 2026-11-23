@@ -4,6 +4,8 @@ import { useEffect, useState, useRef } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 
+import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -11,7 +13,11 @@ import { UserAvatar } from '@/components/ui/user-avatar'
 import { TopBar } from '@/components/shell/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import type { ContentType, ContentStatus } from '@/lib/types'
+import { CONTENT_TYPE_STYLE, DUE_SOON_STYLE } from '@/lib/color-map'
+import { TypeIcon, StatusIcon } from '@/components/ui/type-icon'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { needsClientAction, type ContentType, type ContentStatus } from '@/lib/types'
+import { isContentOverdue } from '@/lib/overdue'
 
 gsap.registerPlugin(useGSAP)
 
@@ -30,42 +36,6 @@ function formatDate() {
   })
 }
 
-const TYPE: Record<ContentType, { label: string; badgeClass: string; surfaceClass: string }> = {
-  graphic: {
-    label: 'Graphic',
-    badgeClass: 'bg-white/20 text-white',
-    surfaceClass: 'bg-coral',
-  },
-  video: {
-    label: 'Video',
-    badgeClass: 'bg-white/20 text-white',
-    surfaceClass: 'bg-lemon',
-  },
-  reel: {
-    label: 'Reel',
-    badgeClass: 'bg-white/20 text-white',
-    surfaceClass: 'bg-mint',
-  },
-  story: {
-    label: 'Story',
-    badgeClass: 'bg-white/20 text-white',
-    surfaceClass: 'bg-lavender',
-  },
-}
-
-const STATUS: Record<ContentStatus, { label: string; badgeClass: string }> = {
-  planned: { label: 'Planned', badgeClass: 'bg-secondary text-muted-foreground' },
-  'brief-ready': { label: 'Brief Ready', badgeClass: 'bg-sky/15 text-sky' },
-  'in-design': { label: 'In Design', badgeClass: 'bg-coral/15 text-coral' },
-  'in-editing': { label: 'In Editing', badgeClass: 'bg-lemon/20 text-amber-700' },
-  'ready-for-review': { label: 'Needs Review', badgeClass: 'bg-sky/20 text-sky' },
-  'client-review': { label: 'Client Review', badgeClass: 'bg-lavender/15 text-lavender' },
-  approved: { label: 'Approved', badgeClass: 'bg-success/15 text-success' },
-  scheduled: { label: 'Scheduled', badgeClass: 'bg-success/20 text-success' },
-  posted: { label: 'Posted', badgeClass: 'bg-success/20 text-success' },
-  overdue: { label: 'Overdue', badgeClass: 'bg-danger/15 text-danger' },
-}
-
 type ContentRow = {
   id: string
   title: string
@@ -81,7 +51,7 @@ type ClientRow = {
   name: string
   initials: string
   brand_color: string
-  content_this_month: number
+  content_quota: number
   pending_approvals: number
 }
 
@@ -116,12 +86,14 @@ function MetricCard({
   value,
   label,
   sub,
-  accentClass,
+  tileClass,
+  barClass,
 }: {
   value: number
   label: string
   sub: string
-  accentClass: string
+  tileClass: string
+  barClass: string
 }) {
   const numRef = useRef<HTMLSpanElement>(null)
 
@@ -144,15 +116,15 @@ function MetricCard({
   }, [value])
 
   return (
-    <Card className="h-full min-w-0 gap-0 border border-border py-0 shadow-none transition-all hover:-translate-y-1 hover:shadow-md">
+    <Card className={cn('h-full min-w-0 gap-0 border border-border py-0 shadow-none transition-all hover:-translate-y-1 hover:shadow-md', tileClass)}>
       <CardContent className="flex min-h-[120px] flex-col justify-between py-5">
-        <div className={cn('mb-3 h-1 w-8 rounded-full', accentClass)} />
+        <div className={cn('mb-3 h-1 w-8 rounded-full', barClass)} />
         <div>
-          <p className={cn('text-[42px] leading-none font-extrabold tracking-[-0.04em]', accentClass.replace('bg-', 'text-'))}>
+          <p className="text-[42px] leading-none font-extrabold tracking-[-0.04em]">
             <span ref={numRef}>0</span>
           </p>
-          <p className="mt-1.5 text-sm font-bold text-foreground">{label}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>
+          <p className="mt-1.5 text-sm font-bold">{label}</p>
+          <p className="mt-0.5 text-xs opacity-80">{sub}</p>
         </div>
       </CardContent>
     </Card>
@@ -162,6 +134,7 @@ function MetricCard({
 export default function DashboardPage() {
   const [userName, setUserName] = useState('...')
   const [mounted, setMounted] = useState(false)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [content, setContent] = useState<ContentRow[]>([])
   const [clients, setClients] = useState<ClientRow[]>([])
   const [team, setTeam] = useState<TeamRow[]>([])
@@ -174,7 +147,7 @@ export default function DashboardPage() {
       const {
         data: { user },
       } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user) { setLoadFailed(true); return }
 
       const [profileRes, contentRes, clientsRes, usersRes, notifRes] = await Promise.all([
         supabase.from('users').select('name').eq('id', user.id).single(),
@@ -183,7 +156,7 @@ export default function DashboardPage() {
           .select('id, title, type, status, scheduled_date, platforms, client_id'),
         supabase
           .from('clients')
-          .select('id, name, initials, brand_color, content_this_month, pending_approvals'),
+          .select('id, name, initials, brand_color, content_quota, pending_approvals'),
         supabase
           .from('users')
           .select('id, name, role, tasks_today, tasks_total')
@@ -212,11 +185,30 @@ export default function DashboardPage() {
     )
   }, { dependencies: [mounted], scope: metricsRef })
 
-  if (!mounted) return null
+  if (!mounted && loadFailed) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-col items-center gap-3 px-4 py-16 text-center" role="alert">
+        <p className="text-sm font-bold text-foreground">We couldn&apos;t load your dashboard.</p>
+        <p className="text-sm text-muted-foreground">Your session may have expired.</p>
+        <Button size="sm" onClick={() => window.location.reload()}>Try again</Button>
+      </div>
+    )
+  }
+
+  if (!mounted) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-col gap-3.5 px-4 py-5" aria-busy="true" aria-label="Loading dashboard">
+        <Skeleton className="h-14 w-full rounded-2xl" />
+        <Skeleton className="h-24 w-full rounded-2xl" />
+        <Skeleton className="h-24 w-full rounded-2xl" />
+        <Skeleton className="h-40 w-full rounded-2xl" />
+      </div>
+    )
+  }
 
   const todayStr = new Date().toISOString().split('T')[0]
   const todayContent = content.filter(c => c.scheduled_date === todayStr)
-  const overdueItems = content.filter(c => c.status === 'overdue')
+  const overdueItems = content.filter(isContentOverdue)
   const needsReview = content.filter(c => c.status === 'ready-for-review')
   const inProd = content.filter(c => !['posted', 'planned', 'overdue'].includes(c.status))
   const attentionItems = [...needsReview, ...overdueItems].slice(0, 6)
@@ -232,7 +224,7 @@ export default function DashboardPage() {
           </p>
           <h1 className="mt-1 text-[26px] leading-[1.15] font-extrabold tracking-[-0.02em] text-foreground">
             {getGreeting()},{' '}
-            <span className="text-coral">{userName}!</span>
+            <span className="text-primary">{userName}!</span>
           </h1>
         </div>
       </div>
@@ -241,35 +233,40 @@ export default function DashboardPage() {
         <TopBar greeting={getGreeting()} userName={userName} notifCount={unread} showClientSwitcher />
       </div>
 
-      <main className="page-main flex-1 overflow-y-auto p-4 pb-[100px]">
+      <main className="page-main flex-1 overflow-y-auto p-4 pb-[100px] md:p-6 md:pb-8">
+       <div className="mx-auto w-full max-w-6xl">
         <div
           ref={metricsRef}
-          className="mb-4 grid grid-cols-2 gap-3"
+          className="mb-4 grid grid-cols-2 gap-3 md:mb-6 md:grid-cols-4 md:gap-4"
         >
           {[
             {
               value: needsReview.length + overdueItems.length,
               label: 'Needs Action',
               sub: 'Review or fix now',
-              accentClass: 'bg-coral',
+              tileClass: 'bg-wash text-foreground',
+              barClass: overdueItems.length > 0 ? 'bg-danger' : 'bg-primary',
             },
             {
               value: todayContent.length,
               label: 'Live Today',
               sub: 'Posts scheduled',
-              accentClass: 'bg-mint',
+              tileClass: 'bg-sage text-foreground',
+              barClass: 'bg-primary',
             },
             {
               value: inProd.length,
               label: 'In Production',
               sub: 'Active this week',
-              accentClass: 'bg-sky',
+              tileClass: 'bg-primary text-primary-foreground',
+              barClass: 'bg-primary-foreground/60',
             },
             {
               value: team.length,
               label: 'Team Active',
               sub: 'All hands on deck',
-              accentClass: 'bg-lavender',
+              tileClass: 'bg-card text-foreground',
+              barClass: 'bg-primary',
             },
           ].map(m => (
             <div key={m.label} className="metric-card">
@@ -278,34 +275,34 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        <div className="flex flex-col gap-4">
-          <Card className="border border-border py-0 shadow-none">
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6">
+          <Card className="border border-border py-0 shadow-none lg:col-span-2 lg:col-start-1 lg:row-start-1">
             <CardContent className="py-5">
               <SectionTitle title="Needs Your Attention" count={attentionItems.length} />
               <div className="flex flex-col gap-2.5">
                 {attentionItems.map(item => {
                   const client = item.client_id ? clientMap[item.client_id] : undefined
-                  const t = TYPE[item.type]
-                  const s = STATUS[item.status]
+                  const t = CONTENT_TYPE_STYLE[item.type]
+                  const late = isContentOverdue(item)
                   return (
                     <div
                       key={item.id}
                       className={cn(
                         'overflow-hidden rounded-xl transition-transform hover:-translate-y-0.5',
-                        t.surfaceClass
+                        t.className,
+                        late && 'border-danger'
                       )}
                     >
                       <div className="flex px-4 py-3">
                         <div className="flex flex-1 flex-col gap-1.5">
-                          <p className="text-sm leading-5 font-bold text-white/95">{item.title}</p>
-                          <p className="text-xs text-white/65">{client?.name}</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            <Badge className={cn('border-0 text-xs font-semibold', t.badgeClass)}>
+                          <p className="text-sm leading-5 font-bold">{item.title}</p>
+                          <p className="text-xs opacity-80">{client?.name}</p>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Badge className="gap-1 border border-current/40 bg-transparent text-xs font-semibold text-current">
+                              <TypeIcon name={t.icon} className="size-2.5" />
                               {t.label}
                             </Badge>
-                            <Badge className="border-0 bg-black/15 text-xs font-semibold text-white/85">
-                              {s.label}
-                            </Badge>
+                            <StatusBadge status={late ? 'overdue' : item.status} />
                           </div>
                         </div>
                       </div>
@@ -321,22 +318,23 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="border border-border py-0 shadow-none">
+          <Card className="border border-border py-0 shadow-none lg:col-start-3 lg:row-start-1">
             <CardContent className="py-5">
               <SectionTitle title="Client Health" />
               <div className="flex flex-col gap-2.5">
                 {clients.map(client => {
-                  const hasOverdue = content.some(c => c.client_id === client.id && c.status === 'overdue')
+                  const hasOverdue = content.some(c => c.client_id === client.id && isContentOverdue(c))
+                  const pendingCount = content.filter(c => c.client_id === client.id && needsClientAction(c.status)).length
                   const statusLabel = hasOverdue
                     ? 'At Risk'
-                    : client.pending_approvals > 2
+                    : pendingCount > 2
                       ? 'Watch'
                       : 'On Track'
                   const statusClass = hasOverdue
-                    ? 'bg-danger/10 text-danger'
-                    : client.pending_approvals > 2
-                      ? 'bg-warning/15 text-warning'
-                      : 'bg-success/15 text-success'
+                    ? 'bg-status-late text-status-late-fg'
+                    : pendingCount > 2
+                      ? DUE_SOON_STYLE.className
+                      : 'bg-status-done text-status-done-fg'
 
                   return (
                     <div
@@ -350,10 +348,11 @@ export default function DashboardPage() {
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-foreground">{client.name}</p>
                         <p className="mt-0.5 text-xs text-muted-foreground">
-                          {client.content_this_month} posts · {client.pending_approvals} pending
+                          {client.content_quota} posts · {pendingCount} pending
                         </p>
                       </div>
-                      <Badge className={cn('border-0 text-xs font-bold', statusClass)}>
+                      <Badge className={cn('gap-1 text-xs font-bold', statusClass)}>
+                        {hasOverdue ? <StatusIcon name="bang" className="size-2.5" /> : pendingCount > 2 ? <StatusIcon name="clock" className="size-2.5" /> : <StatusIcon name="check" className="size-2.5" />}
                         {statusLabel}
                       </Badge>
                     </div>
@@ -363,7 +362,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="border border-border py-0 shadow-none">
+          <Card className="border border-border py-0 shadow-none lg:col-span-2 lg:col-start-1 lg:row-start-2">
             <CardContent className="py-5">
               <SectionTitle title="Going Live Today" count={todayContent.length} />
               {todayContent.length === 0 ? (
@@ -372,29 +371,20 @@ export default function DashboardPage() {
                 <div className="flex flex-col gap-2">
                   {todayContent.map(item => {
                     const client = item.client_id ? clientMap[item.client_id] : undefined
-                    const t = TYPE[item.type]
-                    const s = STATUS[item.status]
+                    const t = CONTENT_TYPE_STYLE[item.type]
                     return (
                       <div
                         key={item.id}
-                        className={cn(
-                          'flex items-center gap-3 rounded-xl border p-3',
-                          item.type === 'graphic' && 'border-coral/30 bg-coral/10',
-                          item.type === 'video' && 'border-lemon/30 bg-lemon/10',
-                          item.type === 'reel' && 'border-mint/30 bg-mint/10',
-                          item.type === 'story' && 'border-lavender/30 bg-lavender/10'
-                        )}
+                        className="flex items-center gap-3 rounded-xl border border-border bg-secondary/40 p-3"
                       >
-                        <div className={cn('size-2.5 shrink-0 rounded-full', t.surfaceClass)} />
+                        <TypeIcon name={t.icon} className="size-3 text-primary" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-foreground">{item.title}</p>
                           <p className="text-xs text-muted-foreground">
                             {client?.name} · {item.platforms?.join(', ')}
                           </p>
                         </div>
-                        <Badge className={cn('border-0 text-xs font-semibold', s.badgeClass)}>
-                          {s.label}
-                        </Badge>
+                        <StatusBadge status={item.status} />
                       </div>
                     )
                   })}
@@ -403,7 +393,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="border border-border py-0 shadow-none">
+          <Card className="border border-border py-0 shadow-none lg:col-start-3 lg:row-start-2">
             <CardContent className="py-5">
               <SectionTitle title="Team Workload" />
               <div className="flex flex-col gap-4">
@@ -436,6 +426,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+       </div>
       </main>
     </div>
   )

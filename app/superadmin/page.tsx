@@ -51,91 +51,98 @@ export default async function SuperAdminPage() {
     return acc
   }, {})
 
-  const planColors: Record<string, string> = {
-    starter: 'hsl(200,72%,50%)',
-    growth:  'hsl(25,82%,60%)',
-    pro:     'hsl(270,72%,60%)',
+  const planBadge: Record<string, string> = {
+    starter: 'bg-sage text-lemon-ink',
+    growth:  'bg-wash text-mint-ink',
+    pro:     'bg-primary text-primary-foreground',
+  }
+  const planText: Record<string, string> = {
+    starter: 'text-lemon-ink',
+    growth:  'text-mint-ink',
+    pro:     'text-primary',
   }
 
+  const stats = [
+    { label: 'Total agencies', value: orgs.length,                                            cls: 'text-primary' },
+    { label: 'Starter',        value: planCounts.starter ?? 0,                                cls: planText.starter },
+    { label: 'Growth',         value: planCounts.growth  ?? 0,                                cls: planText.growth },
+    { label: 'Pro',            value: planCounts.pro     ?? 0,                                cls: planText.pro },
+    { label: 'Trialing',       value: orgs.filter(o => o.plan_status === 'trialing').length,  cls: 'text-lemon-ink' },
+    { label: 'Active',         value: orgs.filter(o => o.plan_status === 'active').length,    cls: 'text-success' },
+    { label: 'Past due',       value: orgs.filter(o => o.plan_status === 'past_due').length,  cls: 'text-danger' },
+    { label: 'Canceled',       value: orgs.filter(o => o.plan_status === 'canceled').length,  cls: 'text-muted-foreground' },
+  ]
+
   return (
-    <div style={{ minHeight:'100dvh', background:'#0F1A14', padding:'32px 24px', fontFamily:'inherit' }}>
+    <div className="min-h-dvh bg-background px-6 py-8 font-[inherit] text-foreground">
 
       {/* Header */}
-      <div style={{ maxWidth: 960, margin: '0 auto' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'8px' }}>
+      <div className="mx-auto max-w-[960px]">
+        <div className="mb-2 flex items-center gap-2.5">
           <svg width="24" height="24" viewBox="0 0 30 30" fill="none">
-            <rect width="30" height="30" rx="9" fill="hsl(25,82%,60%)"/>
-            <path d="M9 22L15 8l6 14M11.5 17.5h7" stroke="hsl(42,30%,99%)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+            <rect width="30" height="30" rx="9" className="fill-primary"/>
+            <path d="M9 22L15 8l6 14M11.5 17.5h7" className="stroke-primary-foreground" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          <span style={{ fontWeight:800, fontSize:'1rem', color:'hsl(42,22%,84%)' }}>
-            Agency<span style={{ color:'hsl(25,82%,60%)' }}>OS</span>
+          <span className="text-base font-extrabold text-foreground">
+            Agency<span className="text-primary">OS</span>
           </span>
-          <span style={{ padding:'3px 10px', borderRadius:'9999px', background:'hsl(270,72%,30%)', color:'hsl(270,72%,80%)', fontSize:'0.6rem', fontWeight:800, letterSpacing:'0.06em', textTransform:'uppercase' }}>
+          <span className="rounded-full border border-primary/30 bg-wash px-2.5 py-[3px] text-[0.6rem] font-extrabold uppercase tracking-[0.06em] text-mint-ink">
             Super Admin
           </span>
         </div>
-        <h1 style={{ fontSize:'1.6rem', fontWeight:800, color:'hsl(42,22%,84%)', letterSpacing:'-0.02em', marginBottom:'32px' }}>
+        <h1 className="mb-8 text-[1.6rem] font-extrabold tracking-[-0.02em] text-foreground">
           Platform Overview
         </h1>
 
         {/* Stats row */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:'12px', marginBottom:'32px' }}>
-          {[
-            { label:'Total agencies', value: orgs.length, color:'hsl(140,60%,50%)' },
-            { label:'Starter',        value: planCounts.starter ?? 0, color: planColors.starter },
-            { label:'Growth',         value: planCounts.growth  ?? 0, color: planColors.growth  },
-            { label:'Pro',            value: planCounts.pro     ?? 0, color: planColors.pro     },
-            { label:'Trialing',       value: orgs.filter(o => o.plan_status === 'trialing').length,  color:'hsl(50,90%,60%)' },
-            { label:'Active',         value: orgs.filter(o => o.plan_status === 'active').length,    color:'hsl(140,60%,50%)' },
-            { label:'Past due',       value: orgs.filter(o => o.plan_status === 'past_due').length,  color:'hsl(4,72%,55%)'   },
-            { label:'Canceled',       value: orgs.filter(o => o.plan_status === 'canceled').length,  color:'hsl(24,8%,45%)'   },
-          ].map(s => (
-            <div key={s.label} style={{ background:'rgba(255,255,255,0.04)', borderRadius:'14px', border:'1px solid rgba(255,255,255,0.06)', padding:'16px' }}>
-              <p style={{ fontSize:'1.6rem', fontWeight:800, color: s.color, lineHeight:1 }}>{s.value}</p>
-              <p style={{ fontSize:'0.65rem', color:'hsl(140,7%,48%)', marginTop:'4px', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em' }}>{s.label}</p>
+        <div className="mb-8 grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
+          {stats.map(s => (
+            <div key={s.label} className="rounded-[14px] border border-border bg-surface p-4">
+              <p className={`text-[1.6rem] font-extrabold leading-none ${s.cls}`}>{s.value}</p>
+              <p className="mt-1 text-[0.65rem] font-semibold uppercase tracking-[0.06em] text-muted-foreground">{s.label}</p>
             </div>
           ))}
         </div>
 
         {/* Org table */}
-        <div style={{ background:'rgba(255,255,255,0.03)', borderRadius:'16px', border:'1px solid rgba(255,255,255,0.06)', overflow:'hidden' }}>
-          <div style={{ padding:'16px 20px', borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
-            <h2 style={{ fontSize:'0.875rem', fontWeight:700, color:'hsl(42,22%,72%)' }}>All Agencies ({orgs.length})</h2>
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+          <div className="border-b border-border px-5 py-4">
+            <h2 className="text-sm font-bold text-foreground">All Agencies ({orgs.length})</h2>
           </div>
-          <div style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
               <thead>
-                <tr style={{ borderBottom:'1px solid rgba(255,255,255,0.05)' }}>
+                <tr className="border-b border-border">
                   {['Agency', 'Slug', 'Plan', 'Status', 'Members', 'Clients', 'Joined'].map(h => (
-                    <th key={h} style={{ padding:'10px 16px', textAlign:'left', fontSize:'0.6rem', fontWeight:700, color:'hsl(140,7%,45%)', textTransform:'uppercase', letterSpacing:'0.07em' }}>{h}</th>
+                    <th key={h} className="px-4 py-2.5 text-left text-[0.6rem] font-bold uppercase tracking-[0.07em] text-muted-foreground">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {orgs.map((org, i) => (
-                  <tr key={org.id} style={{ borderBottom: i < orgs.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                    <td style={{ padding:'12px 16px', fontSize:'0.82rem', fontWeight:600, color:'hsl(42,22%,80%)' }}>{org.name}</td>
-                    <td style={{ padding:'12px 16px', fontSize:'0.75rem', color:'hsl(140,7%,50%)', fontFamily:'monospace' }}>{org.slug}</td>
-                    <td style={{ padding:'12px 16px' }}>
-                      <span style={{ padding:'3px 10px', borderRadius:'9999px', background:`${planColors[org.plan]}20`, color: planColors[org.plan], fontSize:'0.62rem', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.04em' }}>
+                {orgs.map(org => (
+                  <tr key={org.id} className="border-b border-border last:border-b-0">
+                    <td className="px-4 py-3 text-[0.82rem] font-semibold text-foreground">{org.name}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{org.slug}</td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2.5 py-[3px] text-[0.62rem] font-bold uppercase tracking-[0.04em] ${planBadge[org.plan] ?? 'bg-sage text-lemon-ink'}`}>
                         {org.plan}
                       </span>
                     </td>
-                    <td style={{ padding:'12px 16px' }}>
-                      <span style={{ fontSize:'0.72rem', color: org.plan_status === 'active' ? 'hsl(140,60%,50%)' : org.plan_status === 'trialing' ? 'hsl(50,90%,60%)' : 'hsl(4,72%,55%)', fontWeight:600 }}>
+                    <td className="px-4 py-3">
+                      <span className={`text-[0.72rem] font-semibold ${org.plan_status === 'active' ? 'text-success' : org.plan_status === 'trialing' ? 'text-lemon-ink' : 'text-danger'}`}>
                         {org.plan_status.replace('_', ' ')}
                       </span>
                     </td>
-                    <td style={{ padding:'12px 16px', fontSize:'0.8rem', color:'hsl(42,22%,65%)', textAlign:'center' }}>{org.member_count}</td>
-                    <td style={{ padding:'12px 16px', fontSize:'0.8rem', color:'hsl(42,22%,65%)', textAlign:'center' }}>{org.client_count}</td>
-                    <td style={{ padding:'12px 16px', fontSize:'0.72rem', color:'hsl(140,7%,48%)' }}>
+                    <td className="px-4 py-3 text-center text-[0.8rem] text-foreground">{org.member_count}</td>
+                    <td className="px-4 py-3 text-center text-[0.8rem] text-foreground">{org.client_count}</td>
+                    <td className="px-4 py-3 text-[0.72rem] text-muted-foreground">
                       {new Date(org.created_at).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })}
                     </td>
                   </tr>
                 ))}
                 {orgs.length === 0 && (
                   <tr>
-                    <td colSpan={7} style={{ padding:'32px', textAlign:'center', color:'hsl(140,7%,40%)', fontSize:'0.82rem' }}>
+                    <td colSpan={7} className="p-8 text-center text-[0.82rem] text-muted-foreground">
                       No agencies yet.
                     </td>
                   </tr>

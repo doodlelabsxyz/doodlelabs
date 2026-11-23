@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS public.clients (
   platforms                TEXT[] NOT NULL DEFAULT '{}',
   requires_client_approval BOOLEAN DEFAULT FALSE,
   initials                 TEXT NOT NULL,
-  content_this_month       INT DEFAULT 0,
+  content_quota       INT DEFAULT 0,
   pending_approvals        INT DEFAULT 0,
   monthly_retainer         NUMERIC,
   contact_name             TEXT,

@@ -168,7 +168,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.clients (
   id, name, industry, brand_color, platforms,
   requires_client_approval, initials,
-  content_this_month, monthly_retainer,
+  content_quota, monthly_retainer,
   contact_name, contact_email, contract_start, notes
 )
 VALUES

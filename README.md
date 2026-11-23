@@ -1,36 +1,91 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AgencyOS
 
-## Getting Started
+A mobile-first content planning and workflow app for digital marketing agencies. Agencies plan content calendars, brief and create posts, move work through a pipeline, assign tasks by role, collect client approvals, and track invoices and analytics, all from one place.
 
-First, run the development server:
+Roles: Admin, Content Writer, Designer, Videographer, Video Editor, Poster, Client. Each role sees only the screens it needs.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Stack
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Next.js 16 (App Router) and TypeScript
+- Tailwind CSS 4 with shadcn/ui components
+- Supabase (Postgres, Auth, row-level security)
+- Resend (transactional email)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Billing is stubbed: the billing routes under `app/api/billing/` and the settings billing screen are placeholders, not wired to a payment provider.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Setup
 
-## Learn More
+1. Install dependencies:
 
-To learn more about Next.js, take a look at the following resources:
+   ```bash
+   npm install
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+2. Create the env file and fill in the values:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+   ```bash
+   cp .env.example .env.local
+   ```
 
-## Deploy on Vercel
+   See [Environment variables](#environment-variables).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+3. Set up the database. In the Supabase SQL editor, run the files in `supabase/` in this order:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+   1. `schema.sql`
+   2. `seed.sql` (optional, demo data)
+   3. `multi-tenant.sql`
+   4. `client-team.sql`
+   5. `notifications-and-audit.sql`
+
+4. Start the dev server and open http://localhost:3000:
+
+   ```bash
+   npm run dev
+   ```
+
+## Environment variables
+
+| Name | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (public) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (public) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server only) |
+| `DATABASE_URL` | Direct Postgres connection string (server only) |
+| `NEXT_PUBLIC_APP_URL` | Public base URL of the app, used in email links |
+| `SUPER_ADMIN_EMAILS` | Comma-separated emails with super admin access |
+| `RESEND_API_KEY` | Resend API key |
+| `RESEND_FROM_EMAIL` | Sender address for outgoing email |
+
+## Scripts
+
+| Script | Description |
+| --- | --- |
+| `npm run dev` | Start the Next.js dev server |
+| `npm run build` | Production build |
+| `npm run start` | Serve the production build |
+| `npm run lint` | Run ESLint |
+
+## Project layout
+
+- `app/`: routes and screens (App Router)
+- `components/`: shared UI components
+- `lib/`: Supabase clients, hooks, types, and helpers
+- `supabase/`: SQL schema, migrations, and seed data
+- `proxy.ts`: auth and route gating
+
+## Deploying (Vercel)
+
+1. Import the repo in Vercel (or `vercel link` then `vercel --prod`).
+2. Add every variable from `.env.example` to the Production environment. Set `NEXT_PUBLIC_APP_URL` to the deployed URL. For a demo or staging deployment also set `NEXT_PUBLIC_NOINDEX=true`.
+3. Supabase dashboard, Authentication, URL Configuration: set the Site URL to the deployed URL and add `https://<your-domain>/**` to the redirect URLs.
+4. Supabase dashboard, Authentication: turn on "Prevent use of leaked passwords".
+5. Apply the SQL files in `supabase/` in the order listed above, then `client-privacy.sql`, `client-feedback-fix.sql`, `assets-storage.sql`, `org-logo.sql`, `client-assets-visibility.sql` and `security-hardening.sql`.
+6. Verify a Resend sending domain so invite and welcome emails are delivered.
+
+### Demo accounts
+
+`DEMO_PASSWORD='...' node --env-file=.env.local scripts/seed-demo-users.mjs` sets a known password on the demo org's `@agencyos.app` users and creates `demo.admin@agencyos.app`.
+
+### Before every release
+
+`npm run typecheck && npm run lint && npm run build`
